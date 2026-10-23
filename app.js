@@ -766,6 +766,34 @@ function updatePinLabel() {
   document.querySelector("#pin-label").textContent = state.pin === "845401" ? "Motihari, Bihar 845401" : state.pin;
 }
 
+// Loading screen (markup + styles live in index.html so it shows instantly)
+const loadStart = performance.now();
+const slowTimer = setTimeout(() => {
+  const status = document.querySelector("#pl-status");
+  if (status) status.textContent = "Almost there — fetching today's best deals…";
+}, 3500);
+
+function hidePreloader() {
+  clearTimeout(slowTimer);
+  const wait = Math.max(0, 600 - (performance.now() - loadStart));
+  setTimeout(() => {
+    document.querySelector("#preloader")?.classList.add("done");
+    document.documentElement.classList.remove("is-loading");
+  }, wait);
+}
+
+// Product photos shimmer until they've downloaded, then fade in
+const mediaSelector = ".product-media img, .category-media img, .rental-media img, .cart-thumb img, .mega-thumb img, .pdp-media img";
+function markLoaded(image) {
+  image.classList.add("loaded");
+  image.parentElement?.classList.add("media-ready");
+}
+document.addEventListener("load", (event) => { if (event.target.matches?.(mediaSelector)) markLoaded(event.target); }, true);
+document.addEventListener("error", (event) => { if (event.target.matches?.(mediaSelector)) markLoaded(event.target); }, true);
+new MutationObserver(() => {
+  document.querySelectorAll(`${mediaSelector.split(", ").map((s) => `${s}:not(.loaded)`).join(", ")}`).forEach((image) => { if (image.complete) markLoaded(image); });
+}).observe(document.querySelector("#store-app"), { childList: true, subtree: true });
+
 async function init() {
   updatePinLabel();
   updateBadges();
@@ -780,6 +808,7 @@ async function init() {
     document.querySelector("#empty-state").hidden = false;
     document.querySelector("#empty-state h3").textContent = "Couldn't load products";
     document.querySelector("#empty-state p").textContent = "Please check your connection and refresh the page.";
+    hidePreloader();
     return;
   }
   // Drop saved cart/wishlist entries for products that no longer exist
@@ -793,6 +822,7 @@ async function init() {
   renderProducts();
   observeReveals();
   syncRoute(false);
+  hidePreloader();
 }
 
 // ---------------------------------------------------------------------------

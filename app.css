@@ -635,3 +635,20 @@ body.lock { overflow: hidden; }
 .form-error { color: var(--red); font-size: 13.5px; min-height: 20px; margin: 4px 0 10px; }
 .nav-all { white-space: nowrap; flex-shrink: 0; }
 @media (max-width: 640px) { .nav-all { padding: 12px 14px !important; margin-right: 4px; } }
+
+/* Hold the hero entrance until the loading screen has gone */
+.is-loading .hero-anim, .is-loading .hero-bg, .is-loading .hero-chip { animation-play-state: paused; }
+.is-loading body { overflow: hidden; }
+
+/* Photo placeholders: shimmer until the image has downloaded, then fade it in */
+.product-media, .category-media, .rental-media, .cart-thumb, .mega-thumb, .pdp-media { position: relative; }
+.product-media:not(.media-ready)::before, .category-media:not(.media-ready)::before, .rental-media:not(.media-ready)::before, .pdp-media:not(.media-ready)::before {
+  content: ""; position: absolute; inset: 8%; border-radius: 10px;
+  background: linear-gradient(100deg, #eef1f6 30%, #f8f9fc 50%, #eef1f6 70%) 0 0 / 300% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+.product-media img, .category-media img, .rental-media img, .cart-thumb img, .mega-thumb img, .pdp-media img { opacity: 0; transition: opacity .45s ease, transform .35s; }
+.product-media img.loaded, .category-media img.loaded, .rental-media img.loaded, .cart-thumb img.loaded, .mega-thumb img.loaded, .pdp-media img.loaded { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .product-media::before, .category-media::before, .rental-media::before, .pdp-media::before { animation: none !important; }
+}
