@@ -10,7 +10,7 @@ const toastEl = $("#toast");
 const icon = (name) => `<span class="material-symbols-outlined" aria-hidden="true">${name}</span>`;
 const money = (amount) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(amount);
 
-const state = { categories: [], products: [], orders: [], ordersError: "", orderFilter: "active", tab: "orders", filter: "all", query: "", email: "" };
+const state = { categories: [], products: [], orders: [], ordersError: "", orderFilter: "active", customers: [], customerQuery: "", tab: "orders", filter: "all", query: "", email: "" };
 let toastTimer;
 
 function toast(message, isError = false) {
@@ -60,12 +60,15 @@ function renderLogin(message = "") {
     button.textContent = "Signing in…";
     const { data, error } = await db.auth.signInWithPassword({ email: form.get("email"), password: form.get("password") });
     if (error) return renderLogin(error.message === "Invalid login credentials" ? "Wrong email or password." : error.message);
-    enter(data.session);
+    enter(data.session, true);
   });
 }
 
-async function enter(session) {
+async function enter(session, fromLoginForm = false) {
   const { data, error } = await db.from("admins").select("user_id").eq("user_id", session.user.id).maybeSingle();
+  if (!error && !data && !fromLoginForm) {
+    return renderLogin(`You're signed in to the store as ${session.user.email}. Sign in with the owner account to manage the store.`);
+  }
   if (error || !data) {
     await db.auth.signOut();
     return renderLogin(error
@@ -82,6 +85,7 @@ function renderShell() {
     <header class="admin-header"><div class="container admin-header-inner">${brandBlock}
       <nav class="admin-tabs" role="tablist">
         <button data-tab="orders" role="tab" type="button">${icon("receipt_long")}Orders<span class="tab-count" id="new-orders" hidden></span></button>
+        <button data-tab="customers" role="tab" type="button">${icon("group")}Customers</button>
         <button data-tab="products" role="tab" type="button">${icon("inventory_2")}Products</button>
         <button data-tab="categories" role="tab" type="button">${icon("category")}Categories</button>
       </nav>
@@ -91,16 +95,18 @@ function renderShell() {
 }
 
 async function refresh() {
-  const [cats, prods, orders] = await Promise.all([
+  const [cats, prods, orders, customers] = await Promise.all([
     db.from("categories").select("*").order("sort_order").order("name"),
     db.from("products").select("*").order("sort_order").order("created_at", { ascending: false }),
-    db.from("orders").select("*").order("created_at", { ascending: false }).limit(300)
+    db.from("orders").select("*").order("created_at", { ascending: false }).limit(1000),
+    db.from("customers").select("*").order("created_at", { ascending: false }).limit(1000)
   ]);
   if (cats.error || prods.error) return toast((cats.error || prods.error).message, true);
   state.categories = cats.data;
   state.products = prods.data;
   state.orders = orders.data || [];
   state.ordersError = orders.error ? orders.error.message : "";
+  state.customers = customers.data || [];
   render();
 }
 
@@ -110,7 +116,96 @@ function render() {
   const badge = $("#new-orders");
   if (badge) { badge.textContent = fresh; badge.hidden = !fresh; }
   if (state.tab === "orders") return renderOrders();
+  if (state.tab === "customers") return renderCustomers();
   state.tab === "products" ? renderProducts() : renderCategories();
+}
+
+// ---------------------------------------------------------------------------
+// Customers (people who signed in with Google)
+// ---------------------------------------------------------------------------
+function customerStats(id) {
+  const orders = state.orders.filter((o) => o.user_id === id);
+  const live = orders.filter((o) => o.status !== "cancelled");
+  return {
+    orders,
+    count: live.length,
+    spent: live.reduce((sum, o) => sum + o.purchase_total, 0),
+    rent: live.filter((o) => isOpen(o) || o.status === "delivered").reduce((sum, o) => sum + o.monthly_rent_total, 0),
+    last: orders[0]?.created_at
+  };
+}
+
+const shortDate = (iso) => (iso ? new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—");
+const customerAvatar = (c, cls = "") => (safeUrl(c.avatar_url)
+  ? `<img class="c-avatar ${cls}" src="${safeUrl(c.avatar_url)}" alt="" referrerpolicy="no-referrer">`
+  : `<span class="c-avatar ${cls} c-initial">${esc(((c.full_name || c.email || "?")[0] || "?").toUpperCase())}</span>`);
+
+function renderCustomers() {
+  if (state.ordersError && !state.customers.length) {
+    $("#admin-main").innerHTML = `<div class="empty-state">${icon("group")}<h3>Customer accounts aren't set up yet</h3><p>Run <code>supabase/orders.sql</code> in the Supabase SQL Editor, then refresh this page.</p></div>`;
+    return;
+  }
+  const q = state.customerQuery.trim().toLowerCase();
+  const list = state.customers.filter((c) => !q || `${c.full_name || ""} ${c.email || ""} ${c.phone || ""}`.toLowerCase().includes(q));
+  const monthAgo = Date.now() - 30 * 864e5;
+  const withOrders = state.customers.filter((c) => customerStats(c.id).count > 0);
+  $("#admin-main").innerHTML = `
+    <div class="admin-toolbar">
+      <div><h1>Customers</h1><p class="muted">Everyone who has signed in with Google on your store.</p></div>
+      <label class="admin-search">${icon("search")}<input id="customer-search" type="search" placeholder="Search name, email or phone" value="${esc(state.customerQuery)}" aria-label="Search customers"></label>
+    </div>
+    <div class="stat-row">
+      <div class="stat"><small>Total customers</small><strong>${state.customers.length}</strong></div>
+      <div class="stat"><small>Joined in last 30 days</small><strong>${state.customers.filter((c) => new Date(c.created_at) > monthAgo).length}</strong></div>
+      <div class="stat"><small>Have ordered</small><strong>${withOrders.length}</strong></div>
+      <div class="stat"><small>Repeat customers</small><strong>${state.customers.filter((c) => customerStats(c.id).count > 1).length}</strong></div>
+    </div>
+    <div class="customer-table">
+      <div class="ct-row ct-head"><span>Customer</span><span>Phone</span><span>Orders</span><span>Total spent</span><span>Last order</span><span>Joined</span><span></span></div>
+      ${list.map((c) => {
+        const st = customerStats(c.id);
+        return `<div class="ct-row">
+          <span class="ct-person">${customerAvatar(c)}<span><b>${esc(c.full_name || "—")}</b><small>${esc(c.email || "")}</small></span></span>
+          <span>${c.phone ? `<a href="tel:+91${esc(c.phone)}">${esc(c.phone)}</a>` : `<small class="muted">Not yet</small>`}</span>
+          <span><b>${st.count}</b></span>
+          <span>${money(st.spent)}${st.rent ? `<small class="muted"> + ${money(st.rent)}/mo</small>` : ""}</span>
+          <span>${shortDate(st.last)}</span>
+          <span>${shortDate(c.created_at)}</span>
+          <span><button class="btn btn-outline btn-sm" data-view-customer="${c.id}" type="button">View</button></span>
+        </div>`;
+      }).join("")}
+    </div>
+    ${list.length ? "" : `<div class="empty-state">${icon("group")}<h3>${q ? "No customers match your search" : "No customers yet"}</h3><p>${q ? "Try a different name, email or phone." : "Customers appear here after they sign in with Google on your store."}</p></div>`}`;
+  $("#customer-search").addEventListener("input", (event) => {
+    state.customerQuery = event.target.value;
+    const pos = event.target.selectionStart;
+    renderCustomers();
+    const input = $("#customer-search");
+    input.focus();
+    input.setSelectionRange(pos, pos);
+  });
+}
+
+function showCustomer(id) {
+  const c = state.customers.find((x) => x.id === id) || { id, full_name: state.orders.find((o) => o.user_id === id)?.customer_name };
+  const st = customerStats(id);
+  const wa = c.phone ? `https://wa.me/91${c.phone}?text=${encodeURIComponent(`Hello ${c.full_name || ""}, this is Ranak Device Guru.`)}` : "";
+  openDialog(`<div class="customer-detail">
+    <div class="cd-head">${customerAvatar(c, "lg")}<div><h2>${esc(c.full_name || "Customer")}</h2><p class="muted">${esc(c.email || "")}</p></div></div>
+    <div class="cd-contact">
+      ${c.phone ? `<a class="btn btn-outline btn-sm" href="tel:+91${esc(c.phone)}">${icon("call")}${esc(c.phone)}</a>` : ""}
+      ${wa ? `<a class="btn btn-outline btn-sm" href="${wa}" target="_blank" rel="noopener">${icon("chat")}WhatsApp</a>` : ""}
+      ${c.email ? `<a class="btn btn-outline btn-sm" href="mailto:${esc(c.email)}">${icon("mail")}Email</a>` : ""}
+    </div>
+    ${c.address ? `<p class="cd-address">${icon("home_pin")}${esc(c.address)}${c.pincode ? ` — ${esc(c.pincode)}` : ""}</p>` : ""}
+    <div class="stat-row cd-stats">
+      <div class="stat"><small>Orders</small><strong>${st.count}</strong></div>
+      <div class="stat"><small>Total spent</small><strong>${money(st.spent)}</strong></div>
+      <div class="stat"><small>Customer since</small><strong class="sm">${shortDate(c.created_at)}</strong></div>
+    </div>
+    <h3>Order history</h3>
+    ${st.orders.length ? `<div class="cd-orders">${st.orders.map((o) => `<div class="cd-order"><div><b>${esc(o.order_number)}</b><small>${shortDate(o.created_at)} · ${o.items.length} item${o.items.length === 1 ? "" : "s"}</small></div><span class="status-tag s-${o.status}">${statusLabel[o.status]}</span><b>${money(o.purchase_total)}${o.monthly_rent_total ? `<small> + ${money(o.monthly_rent_total)}/mo</small>` : ""}</b></div>`).join("")}</div>` : `<p class="muted">No orders yet.</p>`}
+  </div>`);
 }
 
 // ---------------------------------------------------------------------------
@@ -159,7 +254,8 @@ function orderCard(o) {
     </div>
     <div class="order-cols">
       <div class="order-customer">
-        <b>${esc(o.customer_name)}</b>
+        <b>${esc(o.customer_name)}${o.user_id ? ` <button class="link-chip" data-view-customer="${o.user_id}" type="button">${icon("person")}Customer profile</button>` : ""}</b>
+        ${o.customer_email ? `<a href="mailto:${esc(o.customer_email)}">${icon("mail")}${esc(o.customer_email)}</a>` : ""}
         <a href="tel:+91${esc(o.phone)}">${icon("call")}${esc(o.phone)}</a>
         <a href="${wa}" target="_blank" rel="noopener">${icon("chat")}WhatsApp</a>
         <p>${icon("home_pin")}${esc(o.address)} — ${esc(o.pincode)}</p>
@@ -502,6 +598,7 @@ document.addEventListener("click", async (event) => {
   if (d.close !== undefined) return dialog.close();
   if (d.tab) { state.tab = d.tab; return render(); }
   if (d.orderFilter) { state.orderFilter = d.orderFilter; return renderOrders(); }
+  if (d.viewCustomer) return showCustomer(d.viewCustomer);
   if (d.refresh !== undefined) { await refresh(); return toast("Orders refreshed."); }
   if (d.filter) { state.filter = d.filter; return renderProducts(); }
   if (d.newProduct !== undefined) return openProductForm(null);

@@ -3,7 +3,11 @@
 const RDG = (() => {
   const config = window.RDG_CONFIG || {};
   const configured = Boolean(config.supabaseUrl && config.supabaseAnonKey && window.supabase);
-  const client = configured ? window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey) : null;
+  const client = configured
+    ? window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey, {
+      auth: { flowType: "pkce", persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+    })
+    : null;
   const bucket = config.bucket || "product-images";
 
   const navGroups = ["Mobiles", "Electronics", "Home Appliances", "Furniture"];
@@ -92,5 +96,16 @@ const RDG = (() => {
     return fromRows(cats.data, prods.data);
   }
 
-  return { configured, client, bucket, navGroups, esc, safeUrl, loadCatalog, store: config.store || {} };
+  // Which sign-in providers are switched on in Supabase (e.g. { google: true })
+  async function authProviders() {
+    if (!configured) return {};
+    try {
+      const res = await fetch(`${config.supabaseUrl}/auth/v1/settings`, { headers: { apikey: config.supabaseAnonKey } });
+      return (await res.json()).external || {};
+    } catch {
+      return {};
+    }
+  }
+
+  return { configured, client, bucket, navGroups, esc, safeUrl, loadCatalog, authProviders, store: config.store || {} };
 })();

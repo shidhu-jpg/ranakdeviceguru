@@ -41,7 +41,7 @@ const orderSteps = [
 
 const tenures = [3, 6, 12];
 const store = RDG.store;
-const state = { category: "All", query: "", sort: "featured", showAll: false, cart: [], wishlist: new Set(), pin: "" };
+const state = { category: "All", query: "", sort: "featured", showAll: false, cart: [], wishlist: new Set(), pin: "", user: null, profile: null, google: false };
 const money = (amount) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(amount);
 const findProduct = (id) => products.find((product) => product.id === id);
 const hasDiscount = (product) => product.mrp && product.mrp > product.price;
@@ -104,7 +104,7 @@ document.querySelector("#store-app").innerHTML = `
         <div class="search-suggest" id="search-suggest" role="listbox" hidden></div>
       </form>
       <div class="header-actions">
-        <button class="header-action" data-action="track" type="button">${icon("package_2")}<small>Track Order</small></button>
+        <button class="header-action account-btn" id="account-btn" data-action="account" type="button">${icon("person")}<small>Sign in</small></button>
         <button class="header-action" data-action="wishlist" type="button">${icon("favorite")}<small>Wishlist</small><span class="badge" id="wishlist-count" hidden>0</span></button>
         <button class="header-action" data-action="cart" type="button">${icon("shopping_cart")}<small>Cart</small><span class="badge" id="cart-count" hidden>0</span></button>
       </div>
@@ -253,7 +253,7 @@ document.querySelector("#store-app").innerHTML = `
   <nav class="mobile-nav" aria-label="Mobile navigation">
     <a href="#home">${icon("home")}<small>Home</small></a>
     <a href="#categories">${icon("grid_view")}<small>Categories</small></a>
-    <button data-action="track" type="button">${icon("package_2")}<small>Track</small></button>
+    <button data-action="account" type="button" id="account-btn-mobile">${icon("person")}<small>Account</small></button>
     <button data-action="cart" type="button">${icon("shopping_cart")}<small>Cart</small><span class="badge" id="cart-count-mobile" hidden>0</span></button>
   </nav>
 
@@ -443,6 +443,127 @@ const totals = () => ({
 });
 
 // ---------------------------------------------------------------------------
+// Customer accounts (Google sign-in via Supabase Auth)
+// ---------------------------------------------------------------------------
+const googleIcon = `<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.2-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.2-.1-2.3-.4-3.5z"/></svg>`;
+const googleButton = (resume = "", label = "Continue with Google") =>
+  `<button class="btn-google" data-google-login="${resume}" type="button">${googleIcon}<span>${label}</span></button>`;
+const displayName = () => state.profile?.full_name || state.user?.user_metadata?.full_name || state.user?.user_metadata?.name || state.user?.email?.split("@")[0] || "";
+const avatarUrl = () => RDG.safeUrl(state.profile?.avatar_url || state.user?.user_metadata?.avatar_url || "");
+const avatar = (size = "") => (avatarUrl()
+  ? `<img class="avatar ${size}" src="${avatarUrl()}" alt="" referrerpolicy="no-referrer">`
+  : `<span class="avatar ${size} avatar-initial">${RDG.esc((displayName()[0] || "?").toUpperCase())}</span>`);
+
+async function signInWithGoogle(resume) {
+  if (!RDG.configured || !state.google) return showToast("Google sign-in isn't switched on yet. Please call or WhatsApp us to order.", "error");
+  if (location.protocol === "file:") return showToast("Google sign-in works once the site is online (not from a local file).", "error");
+  saved.write("resume", resume || "");
+  const { error } = await RDG.client.auth.signInWithOAuth({
+    provider: "google",
+    options: { redirectTo: location.origin + location.pathname, queryParams: { prompt: "select_account" } }
+  });
+  if (error) showToast(error.message, "error");
+}
+
+async function loadProfile() {
+  state.profile = null;
+  if (!state.user) return;
+  const { data } = await RDG.client.from("customers").select("*").eq("id", state.user.id).maybeSingle();
+  state.profile = data;
+}
+
+function renderAccount() {
+  const btn = document.querySelector("#account-btn");
+  const mobile = document.querySelector("#account-btn-mobile");
+  if (state.user) {
+    const first = RDG.esc(displayName().split(" ")[0]);
+    btn.innerHTML = `${avatar("sm")}<small>${first || "Account"}</small>`;
+    mobile.innerHTML = `${avatar("xs")}<small>Account</small>`;
+  } else {
+    btn.innerHTML = `${icon("person")}<small>Sign in</small>`;
+    mobile.innerHTML = `${icon("person")}<small>Account</small>`;
+  }
+}
+
+function showLogin() {
+  openDialog(`<div class="info-dialog login-dialog">
+    <span class="login-mark">${icon("devices")}</span>
+    <h2>Welcome to Ranak Device Guru</h2>
+    <p>Sign in to order in one tap and follow every delivery.</p>
+    <ul class="login-perks"><li>${icon("package_2")}Track all your orders in one place</li><li>${icon("bolt")}Faster checkout with your saved address</li><li>${icon("event_repeat")}Manage rentals and repeat purchases</li></ul>
+    ${state.google ? googleButton() : `<p class="form-error">Google sign-in is being set up. Please call or WhatsApp us to order.</p>`}
+    <p class="fine">We only use your name and email to manage your orders. See our <a href="#privacy" data-info-page="privacy">Privacy Policy</a>.</p>
+  </div>`);
+}
+
+function showAccountMenu() {
+  openDialog(`<div class="info-dialog account-menu">
+    <div class="account-head">${avatar("lg")}<div><h2>${RDG.esc(displayName())}</h2><p class="muted">${RDG.esc(state.user.email || "")}</p></div></div>
+    <div class="account-links">
+      <button data-action="my-orders" type="button">${icon("package_2")}<span><b>My Orders</b><small>Track and review your orders</small></span>${icon("chevron_right")}</button>
+      <button data-action="wishlist" type="button">${icon("favorite")}<span><b>Wishlist</b><small>${state.wishlist.size} saved item${state.wishlist.size === 1 ? "" : "s"}</small></span>${icon("chevron_right")}</button>
+      <button data-action="track" type="button">${icon("search")}<span><b>Track by order number</b><small>For orders placed by phone</small></span>${icon("chevron_right")}</button>
+    </div>
+    <button class="btn btn-outline btn-block" data-signout type="button">${icon("logout")} Sign out</button>
+  </div>`);
+}
+
+const statusText = { new: "Order placed", confirmed: "Confirmed", out_for_delivery: "Out for delivery", delivered: "Delivered", cancelled: "Cancelled" };
+
+function orderTimeline(status) {
+  if (status === "cancelled") return `<p class="track-cancelled">${icon("cancel")} This order was cancelled. Contact us if you have questions.</p>`;
+  const current = orderSteps.findIndex((s) => s.key === status);
+  return `<ol class="timeline">${orderSteps.map((s, i) => `<li class="${i <= current ? "done" : ""} ${i === current ? "current" : ""}">${icon(s.icon)}<span>${s.label}</span></li>`).join("")}</ol>`;
+}
+
+async function showMyOrders() {
+  if (!state.user) return showLogin();
+  openDialog(`<div class="info-dialog my-orders"><p class="eyebrow">My account</p><h2>My Orders</h2><div id="my-orders-list">${skeletonCards(2, "sk-order")}</div></div>`);
+  const { data, error } = await RDG.client.from("orders").select("*").eq("user_id", state.user.id).order("created_at", { ascending: false });
+  const list = document.querySelector("#my-orders-list");
+  if (!list) return;
+  if (error) { list.innerHTML = `<p class="form-error">${/relation|schema cache/i.test(error.message) ? "Orders are being set up. Please check back soon." : RDG.esc(error.message)}</p>`; return; }
+  if (!data.length) { list.innerHTML = `<div class="empty-state">${icon("package_2")}<h3>No orders yet</h3><p>When you place an order it will show up here.</p><button class="btn btn-primary" data-close data-goto-catalog type="button">Start shopping</button></div>`; return; }
+  list.innerHTML = data.map((o) => `<article class="track-card my-order">
+    <div class="track-head"><div><b>${RDG.esc(o.order_number)}</b><small>${new Date(o.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</small></div><span class="status-pill s-${o.status}">${statusText[o.status] || o.status}</span></div>
+    ${orderTimeline(o.status)}
+    <ul class="track-items">${o.items.map((it) => `<li><span>${RDG.esc(it.name)} × ${it.quantity}${it.mode === "rent" ? ` <em class="rent-chip">Rent ${it.tenure} mo</em>` : ""}</span><b>${money(it.unit_price * it.quantity)}${it.mode === "rent" ? "/mo" : ""}</b></li>`).join("")}</ul>
+    <div class="my-order-total">${o.purchase_total ? `<span>Total <b>${money(o.purchase_total)}</b></span>` : ""}${o.monthly_rent_total ? `<span>Rent <b>${money(o.monthly_rent_total)}/mo</b></span>` : ""}</div>
+  </article>`).join("");
+}
+
+async function initAuth() {
+  if (!RDG.configured) return;
+  const [providers, { data }] = await Promise.all([RDG.authProviders(), RDG.client.auth.getSession()]);
+  state.google = Boolean(providers.google);
+  state.user = data.session?.user || null;
+  await loadProfile();
+  renderAccount();
+  // Remove the ?code=… left behind by the Google redirect
+  if (/[?&]code=/.test(location.search)) history.replaceState(null, "", location.pathname + location.hash);
+  RDG.client.auth.onAuthStateChange((event, session) => {
+    const wasSignedIn = Boolean(state.user);
+    state.user = session?.user || null;
+    if (event === "SIGNED_OUT" || (event === "SIGNED_IN" && !wasSignedIn)) {
+      loadProfile().then(() => {
+        renderAccount();
+        if (event === "SIGNED_IN") resumeAfterLogin();
+      });
+    }
+  });
+  if (state.user) resumeAfterLogin();
+}
+
+function resumeAfterLogin() {
+  const resume = saved.read("resume", "");
+  if (!resume) return;
+  saved.write("resume", "");
+  showToast(`Signed in as ${RDG.esc(displayName())}`);
+  if (resume === "checkout" && state.cart.length) openDrawer("checkout");
+  if (resume === "orders") showMyOrders();
+}
+
+// ---------------------------------------------------------------------------
 // Cart drawer → checkout → confirmation
 // ---------------------------------------------------------------------------
 let lastFocus = null;
@@ -494,11 +615,26 @@ function cartView() {
 
 function checkoutView() {
   const { buy, rent } = totals();
-  const draft = saved.read("customer", {});
+  if (!state.user) {
+    return `${drawerHead("Checkout", true)}
+      <div class="drawer-body checkout-login">
+        <span class="login-mark">${icon("lock_person")}</span>
+        <h3>Sign in to place your order</h3>
+        <p>Sign in with Google so you can track your order and we can reach you about delivery. Your cart is saved.</p>
+        ${state.google ? googleButton("checkout") : `<p class="form-error">Online ordering opens soon. Please call or WhatsApp us to order.</p>`}
+        <div class="checkout-total">
+          ${buy ? `<p><span>Purchase total</span><strong>${money(buy)}</strong></p>` : ""}
+          ${rent ? `<p><span>Monthly rent</span><strong>${money(rent)}/mo</strong></p>` : ""}
+        </div>
+      </div>`;
+  }
+  const profile = state.profile || {};
+  const draft = { name: displayName(), phone: profile.phone, address: profile.address, pincode: profile.pincode, ...saved.read("customer", {}) };
   const v = (k) => RDG.esc(draft[k] || "");
   return `${drawerHead("Checkout", true)}
     <form class="drawer-body checkout-form" id="checkout-form" novalidate>
       <div class="checkout-summary">${state.cart.map((item) => { const p = findProduct(item.id); return `<span class="cart-thumb sm" title="${p.name}">${productMedia(p)}<i>${item.quantity}</i></span>`; }).join("")}</div>
+      <div class="signed-in-as">${avatar("sm")}<span>Ordering as <b>${RDG.esc(state.user.email || displayName())}</b></span></div>
       <h3 class="form-section">${icon("person")} Contact details</h3>
       <label class="field">Full name<input name="name" autocomplete="name" required minlength="2" maxlength="80" value="${v("name")}"></label>
       <label class="field">Mobile number<input name="phone" type="tel" inputmode="numeric" autocomplete="tel-national" required pattern="[6-9][0-9]{9}" maxlength="10" placeholder="10-digit mobile number" value="${v("phone")}"></label>
@@ -531,13 +667,14 @@ function doneView(order) {
         ${order.monthly_rent_total ? `<p><span>Monthly rent</span><strong>${money(order.monthly_rent_total)}/mo</strong></p>` : ""}
       </div>
       ${wa ? `<a class="btn btn-green btn-block" href="${wa}" target="_blank" rel="noopener">${icon("chat")} Send on WhatsApp</a>` : ""}
-      <button class="btn btn-outline btn-block" data-action="track" data-order="${RDG.esc(order.order_number)}" data-phone="${RDG.esc(order.phone)}" type="button">${icon("package_2")} Track this order</button>
+      <button class="btn btn-outline btn-block" data-action="my-orders" type="button">${icon("package_2")} View my orders</button>
       <button class="btn btn-primary btn-block" data-drawer-close type="button">Continue shopping</button>
     </div>`;
 }
 
 function bindCheckout() {
   const form = document.querySelector("#checkout-form");
+  if (!form) return; // signed out: the sign-in panel is shown instead
   form.addEventListener("input", () => {
     const data = Object.fromEntries(new FormData(form));
     saved.write("customer", data);
@@ -566,6 +703,7 @@ function bindCheckout() {
     if (rpcError) {
       button.disabled = false;
       button.innerHTML = `${icon("lock")} Place Order`;
+      if (/sign in/i.test(rpcError.message || "")) { state.user = null; renderAccount(); return renderDrawer("checkout"); }
       error.textContent = /function|schema cache/i.test(rpcError.message || "")
         ? "Online ordering is being set up. Please call or WhatsApp us to place your order."
         : rpcError.message || "We couldn't place your order. Please try again.";
@@ -575,6 +713,8 @@ function bindCheckout() {
     persistCart();
     updateBadges();
     saved.write("lastOrder", { order_number: order.order_number, phone: data.phone });
+    saved.write("customer", {});
+    loadProfile();
     renderDrawer("done", { ...order, name: data.name.split(" ")[0], phone: data.phone });
   });
 }
@@ -798,6 +938,7 @@ async function init() {
   updatePinLabel();
   updateBadges();
   observeReveals();
+  const authReady = initAuth().catch((error) => console.error("Sign-in unavailable", error));
   try {
     ({ categories, products } = await RDG.loadCatalog());
   } catch (error) {
@@ -823,6 +964,7 @@ async function init() {
   observeReveals();
   syncRoute(false);
   hidePreloader();
+  await authReady;
 }
 
 // ---------------------------------------------------------------------------
@@ -835,6 +977,13 @@ document.addEventListener("click", (event) => {
   if (!target) return;
   const d = target.dataset;
 
+  if (d.googleLogin !== undefined) { target.disabled = true; signInWithGoogle(d.googleLogin).finally(() => { target.disabled = false; }); return; }
+  if (d.signout !== undefined) {
+    dialog.close();
+    RDG.client.auth.signOut().then(() => { state.user = null; state.profile = null; renderAccount(); showToast("You've signed out"); });
+    return;
+  }
+  if (d.gotoCatalog !== undefined) { dialog.close(); return setFilter("All"); }
   if (d.close !== undefined) return dialog.close();
   if (d.drawerView) return renderDrawer(d.drawerView);
   if (d.drawerClose !== undefined) {
@@ -905,6 +1054,11 @@ document.addEventListener("click", (event) => {
 
   switch (d.action) {
     case "cart": return openDrawer("cart");
+    case "account": return state.user ? showAccountMenu() : showLogin();
+    case "my-orders":
+      if (drawer.classList.contains("open")) closeDrawer();
+      if (!state.user) { saved.write("resume", "orders"); return showLogin(); }
+      return showMyOrders();
     case "track":
       if (drawer.classList.contains("open")) closeDrawer();
       return showTrack(d.order ? { order_number: d.order, phone: d.phone } : undefined);

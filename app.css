@@ -652,3 +652,60 @@ body.lock { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .product-media::before, .category-media::before, .rental-media::before, .pdp-media::before { animation: none !important; }
 }
+
+/* Customer accounts */
+.avatar { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.avatar.xs { width: 22px; height: 22px; }
+.avatar.sm { width: 26px; height: 26px; }
+.avatar.lg { width: 56px; height: 56px; }
+.avatar-initial { display: grid; place-items: center; background: linear-gradient(135deg, var(--blue), var(--navy)); color: #fff; font-weight: 700; font-size: 12px; }
+.avatar-initial.lg { font-size: 22px; }
+.account-btn small { max-width: 72px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-btn .avatar { box-shadow: 0 0 0 2px #fff, 0 0 0 3.5px var(--blue-soft); }
+
+.btn-google { width: 100%; display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 50px; padding: 0 20px; border-radius: 10px; border: 1.5px solid #dadce0; background: #fff; color: #1f1f1f; font-weight: 700; font-size: 15px; transition: background .2s, box-shadow .2s, border-color .2s, transform .15s; }
+.btn-google svg { width: 22px; height: 22px; }
+.btn-google:hover { background: #f8faff; border-color: #c6d4ee; box-shadow: 0 6px 18px rgba(15, 30, 70, .1); }
+.btn-google:active { transform: translateY(1px); }
+.btn-google:disabled { opacity: .6; cursor: progress; }
+
+.login-dialog { text-align: center; }
+.login-dialog h2 { padding-right: 0; }
+.login-mark { width: 64px; height: 64px; margin: 4px auto 14px; border-radius: 50%; display: grid; place-items: center; color: #fff; background: linear-gradient(135deg, var(--blue), var(--navy)); box-shadow: 0 12px 28px rgba(26, 95, 214, .3); }
+.login-mark .material-symbols-outlined { font-size: 30px; }
+.login-perks { list-style: none; padding: 0; margin: 0 0 20px; display: grid; gap: 10px; text-align: left; background: var(--soft); border-radius: 12px; padding: 14px 16px; }
+.login-perks li { display: flex; gap: 10px; align-items: center; font-size: 14px; font-weight: 500; }
+.login-perks .material-symbols-outlined { color: var(--blue); }
+.login-dialog .fine a { color: var(--blue); font-weight: 600; }
+
+.account-head { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; padding-right: 36px; }
+.account-head h2 { margin: 0; padding: 0; font-size: 20px; }
+.account-head p { margin: 2px 0 0 !important; font-size: 13.5px; word-break: break-all; }
+.account-links { display: grid; gap: 8px; margin-bottom: 18px; }
+.account-links button { display: flex; align-items: center; gap: 14px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; text-align: left; transition: border-color .2s, background .2s, transform .2s; }
+.account-links button:hover { border-color: #c6d4ee; background: #f8faff; transform: translateX(2px); }
+.account-links button > .material-symbols-outlined:first-child { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: var(--blue-soft); color: var(--blue); }
+.account-links span:nth-child(2) { flex: 1; }
+.account-links b { display: block; font-size: 14.5px; }
+.account-links small { color: var(--muted); font-size: 12.5px; }
+
+.my-orders { max-height: 78vh; overflow-y: auto; }
+.my-order { margin-top: 12px; }
+.my-order .track-head > div { display: flex; flex-direction: column; }
+.status-pill { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: var(--blue-soft); color: var(--blue); white-space: nowrap; }
+.status-pill.s-new { background: #fff1f4; color: var(--red); }
+.status-pill.s-out_for_delivery { background: #fff4dc; color: #a15c00; }
+.status-pill.s-delivered { background: var(--green-soft); color: var(--green); }
+.status-pill.s-cancelled { background: #eceef2; color: #4b5563; }
+.rent-chip { font-style: normal; font-size: 11px; font-weight: 700; color: #a15c00; background: #fff4dc; padding: 1px 6px; border-radius: 4px; }
+.my-order-total { display: flex; justify-content: flex-end; gap: 18px; margin-top: 10px; font-size: 14px; color: var(--muted); }
+.my-order-total b { color: var(--ink); }
+.sk-order { height: 200px; margin-top: 12px; }
+
+.checkout-login { display: flex; flex-direction: column; align-items: center; text-align: center; padding-top: 36px; gap: 10px; }
+.checkout-login h3 { font-size: 20px; }
+.checkout-login p { color: var(--muted); font-size: 14px; max-width: 320px; margin-bottom: 8px; }
+.checkout-login .checkout-total { width: 100%; text-align: left; margin-top: 18px; }
+.signed-in-as { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; background: var(--soft); font-size: 13.5px; margin-top: 8px; }
+.signed-in-as b { word-break: break-all; }
+.mobile-nav .avatar { margin-bottom: 1px; }

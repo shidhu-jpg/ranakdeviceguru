@@ -1,10 +1,73 @@
--- Ranak Device Guru — orders (run after schema.sql). Safe to re-run.
--- Customers never write to the orders table directly: they call place_order(), which
--- re-reads prices from public.products so totals can't be tampered with in the browser.
+-- Ranak Device Guru — customer accounts + orders (run after schema.sql). Safe to re-run.
+--
+-- * Customers sign in with Google (Supabase Auth). A row in public.customers is created for each new user.
+-- * Customers never write to orders directly: they call place_order(), which requires sign-in and
+--   re-reads prices from public.products so totals can't be tampered with in the browser.
+-- * Customers can read only their own profile and orders; store admins can read everything.
 
+-- ---------------------------------------------------------------------------
+-- Customer profiles
+-- ---------------------------------------------------------------------------
+create table if not exists public.customers (
+  id             uuid primary key references auth.users (id) on delete cascade,
+  email          text,
+  full_name      text,
+  avatar_url     text,
+  phone          text,
+  address        text,
+  pincode        text,
+  created_at     timestamptz not null default now(),
+  last_order_at  timestamptz
+);
+
+alter table public.customers enable row level security;
+
+drop policy if exists "customers read own or admin" on public.customers;
+create policy "customers read own or admin" on public.customers for select
+  using (id = auth.uid() or public.is_admin());
+drop policy if exists "customers update own" on public.customers;
+create policy "customers update own" on public.customers for update
+  using (id = auth.uid()) with check (id = auth.uid());
+drop policy if exists "customers insert own" on public.customers;
+create policy "customers insert own" on public.customers for insert
+  with check (id = auth.uid());
+
+-- Create the profile automatically when someone signs up (Google fills in name + photo)
+create or replace function public.handle_new_customer() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  insert into public.customers (id, email, full_name, avatar_url)
+  values (
+    new.id,
+    new.email,
+    coalesce(new.raw_user_meta_data ->> 'full_name', new.raw_user_meta_data ->> 'name'),
+    new.raw_user_meta_data ->> 'avatar_url'
+  )
+  on conflict (id) do nothing;
+  return new;
+end $$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created after insert on auth.users
+  for each row execute function public.handle_new_customer();
+
+-- Profiles for anyone who signed up before this script ran (store owners excluded)
+insert into public.customers (id, email, full_name, avatar_url)
+select u.id, u.email,
+       coalesce(u.raw_user_meta_data ->> 'full_name', u.raw_user_meta_data ->> 'name'),
+       u.raw_user_meta_data ->> 'avatar_url'
+from auth.users u
+where not exists (select 1 from public.admins a where a.user_id = u.id)
+on conflict (id) do nothing;
+
+-- ---------------------------------------------------------------------------
+-- Orders
+-- ---------------------------------------------------------------------------
 create table if not exists public.orders (
   id                  uuid primary key default gen_random_uuid(),
   order_number        text not null unique,
+  user_id             uuid references auth.users (id) on delete set null,
+  customer_email      text,
   customer_name       text not null,
   phone               text not null,
   address             text not null,
@@ -19,7 +82,12 @@ create table if not exists public.orders (
   updated_at          timestamptz not null default now()
 );
 
+-- Columns added after the first version of this script
+alter table public.orders add column if not exists user_id uuid references auth.users (id) on delete set null;
+alter table public.orders add column if not exists customer_email text;
+
 create index if not exists orders_created_idx on public.orders (created_at desc);
+create index if not exists orders_user_idx on public.orders (user_id);
 
 drop trigger if exists orders_touch on public.orders;
 create trigger orders_touch before update on public.orders
@@ -29,6 +97,8 @@ alter table public.orders enable row level security;
 
 drop policy if exists "orders admin read" on public.orders;
 create policy "orders admin read" on public.orders for select using (public.is_admin());
+drop policy if exists "orders customer read own" on public.orders;
+create policy "orders customer read own" on public.orders for select using (user_id = auth.uid());
 drop policy if exists "orders admin update" on public.orders;
 create policy "orders admin update" on public.orders for update using (public.is_admin()) with check (public.is_admin());
 drop policy if exists "orders admin delete" on public.orders;
@@ -38,6 +108,8 @@ create policy "orders admin delete" on public.orders for delete using (public.is
 create or replace function public.place_order(p_customer jsonb, p_items jsonb) returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare
+  v_uid     uuid := auth.uid();
+  v_email   text;
   v_name    text := btrim(coalesce(p_customer ->> 'name', ''));
   v_phone   text := regexp_replace(coalesce(p_customer ->> 'phone', ''), '\D', '', 'g');
   v_address text := btrim(coalesce(p_customer ->> 'address', ''));
@@ -54,6 +126,11 @@ declare
   v_rent    integer := 0;
   v_number  text;
 begin
+  if v_uid is null then
+    raise exception 'Please sign in with Google to place your order.';
+  end if;
+  select email into v_email from auth.users where id = v_uid;
+
   if length(v_name) < 2 or length(v_name) > 80 then
     raise exception 'Please enter your full name.';
   end if;
@@ -118,13 +195,21 @@ begin
     exit when not exists (select 1 from public.orders o where o.order_number = v_number);
   end loop;
 
-  insert into public.orders (order_number, customer_name, phone, address, pincode, notes, items, purchase_total, monthly_rent_total)
-  values (v_number, v_name, v_phone, v_address, v_pin, nullif(v_notes, ''), v_lines, v_buy, v_rent);
+  insert into public.orders (order_number, user_id, customer_email, customer_name, phone, address, pincode, notes, items, purchase_total, monthly_rent_total)
+  values (v_number, v_uid, v_email, v_name, v_phone, v_address, v_pin, nullif(v_notes, ''), v_lines, v_buy, v_rent);
+
+  -- Remember contact details for next time
+  insert into public.customers (id, email, full_name, phone, address, pincode, last_order_at)
+  values (v_uid, v_email, v_name, v_phone, v_address, v_pin, now())
+  on conflict (id) do update set
+    full_name = coalesce(public.customers.full_name, excluded.full_name),
+    phone = excluded.phone, address = excluded.address, pincode = excluded.pincode,
+    last_order_at = excluded.last_order_at;
 
   return jsonb_build_object('order_number', v_number, 'purchase_total', v_buy, 'monthly_rent_total', v_rent);
 end $$;
 
--- Customers look up their own order with order number + the phone number used to place it.
+-- Look up an order by order number + the phone number used to place it (works without signing in).
 create or replace function public.track_order(p_order_number text, p_phone text) returns jsonb
 language sql stable security definer set search_path = '' as $$
   select jsonb_build_object(
@@ -138,5 +223,5 @@ $$;
 
 revoke all on function public.place_order(jsonb, jsonb) from public;
 revoke all on function public.track_order(text, text) from public;
-grant execute on function public.place_order(jsonb, jsonb) to anon, authenticated;
+grant execute on function public.place_order(jsonb, jsonb) to authenticated;
 grant execute on function public.track_order(text, text) to anon, authenticated;
