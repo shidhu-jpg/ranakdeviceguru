@@ -10,7 +10,7 @@ const toastEl = $("#toast");
 const icon = (name) => `<span class="material-symbols-outlined" aria-hidden="true">${name}</span>`;
 const money = (amount) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(amount);
 
-const state = { categories: [], products: [], tab: "products", filter: "all", query: "", email: "" };
+const state = { categories: [], products: [], orders: [], ordersError: "", orderFilter: "active", tab: "orders", filter: "all", query: "", email: "" };
 let toastTimer;
 
 function toast(message, isError = false) {
@@ -81,6 +81,7 @@ function renderShell() {
   app.innerHTML = `
     <header class="admin-header"><div class="container admin-header-inner">${brandBlock}
       <nav class="admin-tabs" role="tablist">
+        <button data-tab="orders" role="tab" type="button">${icon("receipt_long")}Orders<span class="tab-count" id="new-orders" hidden></span></button>
         <button data-tab="products" role="tab" type="button">${icon("inventory_2")}Products</button>
         <button data-tab="categories" role="tab" type="button">${icon("category")}Categories</button>
       </nav>
@@ -90,19 +91,95 @@ function renderShell() {
 }
 
 async function refresh() {
-  const [cats, prods] = await Promise.all([
+  const [cats, prods, orders] = await Promise.all([
     db.from("categories").select("*").order("sort_order").order("name"),
-    db.from("products").select("*").order("sort_order").order("created_at", { ascending: false })
+    db.from("products").select("*").order("sort_order").order("created_at", { ascending: false }),
+    db.from("orders").select("*").order("created_at", { ascending: false }).limit(300)
   ]);
   if (cats.error || prods.error) return toast((cats.error || prods.error).message, true);
   state.categories = cats.data;
   state.products = prods.data;
+  state.orders = orders.data || [];
+  state.ordersError = orders.error ? orders.error.message : "";
   render();
 }
 
 function render() {
   document.querySelectorAll("[data-tab]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === state.tab)));
+  const fresh = state.orders.filter((o) => o.status === "new").length;
+  const badge = $("#new-orders");
+  if (badge) { badge.textContent = fresh; badge.hidden = !fresh; }
+  if (state.tab === "orders") return renderOrders();
   state.tab === "products" ? renderProducts() : renderCategories();
+}
+
+// ---------------------------------------------------------------------------
+// Orders
+// ---------------------------------------------------------------------------
+const orderStatuses = [
+  ["new", "New"], ["confirmed", "Confirmed"], ["out_for_delivery", "Out for delivery"], ["delivered", "Delivered"], ["cancelled", "Cancelled"]
+];
+const statusLabel = Object.fromEntries(orderStatuses);
+const orderFilters = [["active", "Open"], ["all", "All"], ...orderStatuses];
+const isOpen = (o) => !["delivered", "cancelled"].includes(o.status);
+
+function renderOrders() {
+  if (state.ordersError) {
+    $("#admin-main").innerHTML = `<div class="empty-state">${icon("receipt_long")}<h3>Orders aren't set up yet</h3><p>Run <code>supabase/orders.sql</code> in the Supabase SQL Editor, then refresh this page.</p><p class="muted">${esc(state.ordersError)}</p></div>`;
+    return;
+  }
+  const match = (o) => state.orderFilter === "all" || (state.orderFilter === "active" ? isOpen(o) : o.status === state.orderFilter);
+  const list = state.orders.filter(match);
+  const count = (key) => state.orders.filter((o) => key === "all" || (key === "active" ? isOpen(o) : o.status === key)).length;
+  const today = new Date().toDateString();
+  const todays = state.orders.filter((o) => new Date(o.created_at).toDateString() === today && o.status !== "cancelled");
+  $("#admin-main").innerHTML = `
+    <div class="admin-toolbar">
+      <div><h1>Orders</h1><p class="muted">Customers pay on delivery. Call to confirm, then update the status as you go.</p></div>
+      <button class="btn btn-outline" data-refresh type="button">${icon("refresh")}Refresh</button>
+    </div>
+    <div class="stat-row">
+      <div class="stat"><small>New orders</small><strong>${count("new")}</strong></div>
+      <div class="stat"><small>Open orders</small><strong>${count("active")}</strong></div>
+      <div class="stat"><small>Today's orders</small><strong>${todays.length}</strong></div>
+      <div class="stat"><small>Today's sales</small><strong>${money(todays.reduce((s, o) => s + o.purchase_total, 0))}</strong></div>
+    </div>
+    <div class="chip-row">${orderFilters.map(([key, label]) => `<button class="chip ${state.orderFilter === key ? "active" : ""}" data-order-filter="${key}" type="button">${label} <span>${count(key)}</span></button>`).join("")}</div>
+    <div class="order-list">${list.map(orderCard).join("")}</div>
+    ${list.length ? "" : `<div class="empty-state">${icon("inbox")}<h3>No orders here</h3><p>New orders from the website will appear here.</p></div>`}`;
+}
+
+function orderCard(o) {
+  const placed = new Date(o.created_at);
+  const wa = `https://wa.me/91${o.phone}?text=${encodeURIComponent(`Hello ${o.customer_name}, this is Ranak Device Guru about your order ${o.order_number}.`)}`;
+  return `<article class="order-card status-${o.status}">
+    <div class="order-top">
+      <div><h3>${esc(o.order_number)}</h3><small>${placed.toLocaleDateString("en-IN", { day: "numeric", month: "short" })} · ${placed.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}</small></div>
+      <label class="status-select"><span class="sr-only">Order status</span><select data-order-status="${o.id}">${orderStatuses.map(([k, l]) => `<option value="${k}" ${k === o.status ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+    </div>
+    <div class="order-cols">
+      <div class="order-customer">
+        <b>${esc(o.customer_name)}</b>
+        <a href="tel:+91${esc(o.phone)}">${icon("call")}${esc(o.phone)}</a>
+        <a href="${wa}" target="_blank" rel="noopener">${icon("chat")}WhatsApp</a>
+        <p>${icon("home_pin")}${esc(o.address)} — ${esc(o.pincode)}</p>
+        ${o.notes ? `<p class="order-notes">${icon("sticky_note_2")}${esc(o.notes)}</p>` : ""}
+      </div>
+      <ul class="order-items">${o.items.map((it) => `<li><span>${esc(it.name)} × ${it.quantity}${it.mode === "rent" ? ` <em>Rent ${it.tenure} mo</em>` : ""}</span><b>${money(it.unit_price * it.quantity)}${it.mode === "rent" ? "/mo" : ""}</b></li>`).join("")}</ul>
+    </div>
+    <div class="order-totals">${o.purchase_total ? `<span>Collect on delivery <b>${money(o.purchase_total)}</b></span>` : ""}${o.monthly_rent_total ? `<span>Monthly rent <b>${money(o.monthly_rent_total)}/mo</b></span>` : ""}</div>
+  </article>`;
+}
+
+async function updateOrderStatus(id, status, select) {
+  select.disabled = true;
+  const { error } = await db.from("orders").update({ status }).eq("id", id);
+  select.disabled = false;
+  if (error) return toast(error.message, true);
+  const order = state.orders.find((o) => o.id === id);
+  order.status = status;
+  toast(`${order.order_number} marked ${statusLabel[status].toLowerCase()}.`);
+  render();
 }
 
 const categoryById = (id) => state.categories.find((c) => c.id === id);
@@ -424,6 +501,8 @@ document.addEventListener("click", async (event) => {
   const d = t.dataset;
   if (d.close !== undefined) return dialog.close();
   if (d.tab) { state.tab = d.tab; return render(); }
+  if (d.orderFilter) { state.orderFilter = d.orderFilter; return renderOrders(); }
+  if (d.refresh !== undefined) { await refresh(); return toast("Orders refreshed."); }
   if (d.filter) { state.filter = d.filter; return renderProducts(); }
   if (d.newProduct !== undefined) return openProductForm(null);
   if (d.editProduct) return openProductForm(state.products.find((p) => p.id === d.editProduct));
@@ -436,6 +515,10 @@ document.addEventListener("click", async (event) => {
   if (d.signout !== undefined) { await db.auth.signOut(); return renderLogin(); }
 });
 dialog.addEventListener("click", (event) => { if (event.target === dialog) dialog.close(); });
+document.addEventListener("change", (event) => {
+  const select = event.target.closest("[data-order-status]");
+  if (select) updateOrderStatus(select.dataset.orderStatus, select.value, select);
+});
 
 async function start() {
   if (!RDG.configured) return renderSetup();

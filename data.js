@@ -92,5 +92,5 @@ const RDG = (() => {
     return fromRows(cats.data, prods.data);
   }
 
-  return { configured, client, bucket, navGroups, esc, safeUrl, loadCatalog };
+  return { configured, client, bucket, navGroups, esc, safeUrl, loadCatalog, store: config.store || {} };
 })();

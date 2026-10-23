@@ -4,5 +4,13 @@
 window.RDG_CONFIG = {
   supabaseUrl: "https://fdnlrktzgvsnvjszhvbl.supabase.co",
   supabaseAnonKey: "sb_publishable_6k5gk4707iXGMMRUcxqP2A_-7mPZMg5",
-  bucket: "product-images"
+  bucket: "product-images",
+
+  // Store contact details shown on the site. Leave a value empty to hide it.
+  store: {
+    phone: "",            // e.g. "+91 98765 43210"
+    whatsapp: "",         // digits with country code, e.g. "919876543210" — enables "Send on WhatsApp" after an order
+    email: "hello@ranakdeviceguru.in",
+    address: "Motihari, Bihar 845401"
+  }
 };
