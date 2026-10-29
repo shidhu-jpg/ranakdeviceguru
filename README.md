@@ -37,7 +37,7 @@ Then submit `https://ranakdeviceguruareraj.in/sitemap.xml` once in [Google Searc
 
 ## Installable app
 
-The store installs as an app on Android, iPhone and desktop (`manifest.webmanifest`, `sw.js`, icons in `images/icons/`). On Android and desktop Chrome/Edge, visitors see a **Get App** button and a one-time install banner; on iPhone the button explains Safari's **Share → Add to Home Screen**. Once installed it opens full-screen from its own icon, and it keeps working on a weak connection using the last saved pages, photos and catalogue.
+The store installs as an app on Android, iPhone and desktop (`manifest.webmanifest`, `sw.js`, icons in `images/icons/`). Visitors always see a **Get App** button in the header and a one-time install banner. In Chrome, Edge and Samsung Internet it installs in one tap; elsewhere (iPhone, Firefox, links opened inside WhatsApp or Instagram) it shows the steps for that device. Once installed it opens full-screen from its own icon, and it keeps working on a weak connection using the last saved pages, photos and catalogue.
 
 Code and page updates reach installed apps automatically the next time they open online. If you change the list of files in `SHELL` at the top of `sw.js`, bump `CACHE` (e.g. `rdg-v2`) so old saved copies are cleared.
 

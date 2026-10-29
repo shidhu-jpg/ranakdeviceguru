@@ -3,7 +3,7 @@
 // last saved copy when offline. Photos and fonts are served from the cache and refreshed in the background.
 // The catalogue is fetched fresh too, with the last copy kept for offline browsing (place_order() re-checks
 // prices, so a stale copy can't change what anyone pays). Sign-in and order requests always go to the network.
-const CACHE = "rdg-v1";
+const CACHE = "rdg-v2";
 const SHELL = ["./", "index.html", "app.css", "app.js", "data.js", "config.js", "manifest.webmanifest", "images/hero.jpg", "images/icons/icon-192.png"];
 
 self.addEventListener("install", (event) => {
@@ -24,7 +24,8 @@ async function networkFirst(request, fallback) {
   const url = new URL(request.url);
   const key = request.mode === "navigate" ? url.origin + url.pathname : request;
   try {
-    const response = await fetch(request);
+    // no-cache: check with the server rather than reuse the browser's copy, so a new deploy shows up on the next visit
+    const response = await fetch(request.mode === "navigate" ? new Request(request.url, { cache: "no-cache", credentials: "same-origin" }) : new Request(request, { cache: "no-cache" }));
     if (response.ok) cache.put(key, response.clone());
     return response;
   } catch (error) {

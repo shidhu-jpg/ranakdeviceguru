@@ -976,38 +976,55 @@ let installPrompt = null;
 const isStandalone = () => window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
 const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 
+const isAndroid = /android/i.test(navigator.userAgent);
+// Links opened from WhatsApp, Instagram or Facebook load in their own built-in browser, which can't install apps
+const isInAppBrowser = /FBAN|FBAV|Instagram|WhatsApp|Line\/|; wv\)/i.test(navigator.userAgent);
+
+// "Get App" is always offered outside the installed app. Browsers that support it (Chrome, Edge, Samsung Internet)
+// install in one tap; everywhere else the button explains the steps for that device.
 function setInstallable(available) {
   document.querySelectorAll(".header-action[data-action=install]").forEach((button) => { button.hidden = !available; });
-  // The banner is offered once, a few seconds in, until the visitor installs or dismisses it
   const banner = document.querySelector("#install-banner");
-  if (!available) banner.hidden = true;
-  else if (!saved.read("installDismissed", false)) setTimeout(() => { banner.hidden = !installPrompt && !isIos; }, 4000);
+  banner.hidden = true;
+  // The banner is offered once, a few seconds in, until the visitor installs or dismisses it
+  if (available && !saved.read("installDismissed", false)) setTimeout(() => { banner.hidden = isStandalone(); }, 4000);
+}
+
+function installSteps() {
+  if (isInAppBrowser) {
+    return ["Open this page in your phone's browser", [`Tap the menu ${icon("more_vert")} at the top of the screen`, `Choose <b>Open in Chrome</b> (or <b>Open in Safari</b> on iPhone)`, "Tap <b>Get App</b> again there"]];
+  }
+  if (isIos) {
+    return ["Add Ranak Device Guru to your Home Screen", ["Open this page in <b>Safari</b>", `Tap the <b>Share</b> button ${icon("ios_share")}`, "Choose <b>Add to Home Screen</b>, then tap <b>Add</b>"]];
+  }
+  if (isAndroid) {
+    return ["Install Ranak Device Guru", ["Open this page in <b>Chrome</b>", `Tap the menu ${icon("more_vert")} at the top right`, "Choose <b>Install app</b> or <b>Add to Home screen</b>"]];
+  }
+  return ["Install Ranak Device Guru on this computer", ["Open this page in <b>Chrome</b> or <b>Microsoft Edge</b>", `Click the install icon ${icon("install_desktop")} at the right end of the address bar`, "Or open the browser menu and choose <b>Install Ranak Device Guru</b> (under <b>Apps</b> in Edge, <b>Cast, save and share</b> in Chrome)"]];
 }
 
 async function installApp() {
   document.querySelector("#install-banner").hidden = true;
   if (!installPrompt) {
-    // iPhone and iPad have no install prompt; Safari's Share menu does it
-    return openDialog(`<div class="info-dialog"><p class="eyebrow">Install the app</p><h2>Add Ranak Device Guru to your Home Screen</h2><ol class="install-steps"><li>Open this page in <b>Safari</b></li><li>Tap the <b>Share</b> button ${icon("ios_share")} at the bottom of the screen</li><li>Choose <b>Add to Home Screen</b>, then tap <b>Add</b></li></ol><button class="btn btn-primary" data-close type="button">Got it</button></div>`);
+    const [title, steps] = installSteps();
+    return openDialog(`<div class="info-dialog"><p class="eyebrow">Get the app</p><h2>${title}</h2><ol class="install-steps">${steps.map((step) => `<li>${step}</li>`).join("")}</ol><p class="fine">The app opens full-screen from its own icon and works on a weak connection.</p><button class="btn btn-primary" data-close type="button">Got it</button></div>`);
   }
   installPrompt.prompt();
   const { outcome } = await installPrompt.userChoice;
   installPrompt = null;
-  setInstallable(false);
-  if (outcome === "accepted") saved.write("installDismissed", true);
+  if (outcome === "accepted") { saved.write("installDismissed", true); setInstallable(false); }
 }
 
 window.addEventListener("beforeinstallprompt", (event) => {
   event.preventDefault();
   installPrompt = event;
-  setInstallable(true);
 });
 window.addEventListener("appinstalled", () => {
   installPrompt = null;
   setInstallable(false);
   showToast("Ranak Device Guru app installed");
 });
-if (isIos && !isStandalone()) setInstallable(true);
+setInstallable(!isStandalone());
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
   window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch((error) => console.error("App mode unavailable", error)));
 }
