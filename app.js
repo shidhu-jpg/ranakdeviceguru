@@ -52,6 +52,27 @@ const arrow = icon("arrow_forward", "btn-arrow");
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 // Must match place_order() in supabase/orders.sql
 const rentPrice = (product, tenure) => Math.round(product.rent * (tenure === 3 ? 1.3 : tenure === 6 ? 1.12 : 1));
+const plainText = (html) => new DOMParser().parseFromString(html || "", "text/html").body.textContent;
+
+// ---------------------------------------------------------------------------
+// Shareable product links, e.g. ?p=samsung-galaxy-s24-5g-1a2b3c4d
+// Must match slug() in tools/build-sitemap.mjs
+// ---------------------------------------------------------------------------
+const isUuid = (id) => /^[0-9a-f]{8}-/.test(id);
+function productSlug(product) {
+  if (!isUuid(product.id)) return product.id; // demo catalogue ids are already readable
+  const words = plainText(product.name).normalize("NFKD").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 60).replace(/^-+|-+$/g, "");
+  return [words, product.id.slice(0, 8)].filter(Boolean).join("-");
+}
+const productPath = (product) => `?p=${productSlug(product)}`;
+const homeUrl = () => location.origin + location.pathname;
+const productUrl = (product) => homeUrl() + productPath(product);
+// Also accepts a bare id, and old links whose product has since been renamed (matched on the id suffix)
+function productFromSlug(slug) {
+  if (!slug) return null;
+  const prefix = slug.match(/(?:^|-)([0-9a-f]{8})$/)?.[1];
+  return products.find((p) => productSlug(p) === slug || p.id === slug) || (prefix && products.find((p) => p.id.startsWith(prefix))) || null;
+}
 
 // ---------------------------------------------------------------------------
 // Per-visitor persistence (cart, wishlist, delivery PIN). Never required to work.
@@ -356,8 +377,9 @@ function productCard(product, index = 0) {
     <article class="product-card" data-reveal style="--i:${index % 5}">
       ${hasDiscount(product) && discount(product) >= 20 ? `<span class="deal-tag">${discount(product)}% OFF</span>` : ""}
       <button class="wish ${isSaved ? "saved" : ""}" data-wishlist="${product.id}" type="button" aria-pressed="${isSaved}" aria-label="${isSaved ? "Remove from" : "Add to"} wishlist">${icon("favorite")}</button>
-      <a class="product-media" href="#product/${product.id}" data-details="${product.id}">${productMedia(product)}</a>
-      <a class="product-name" href="#product/${product.id}" data-details="${product.id}">${product.name}</a>
+      <button class="wish card-share" data-share="${product.id}" type="button" aria-label="Share ${product.name}">${icon("share")}</button>
+      <a class="product-media" href="${productPath(product)}" data-details="${product.id}">${productMedia(product)}</a>
+      <a class="product-name" href="${productPath(product)}" data-details="${product.id}">${product.name}</a>
       <p class="product-detail">${product.detail}</p>
       ${product.rating ? `<p class="rating">${stars(product.rating)}${product.reviews ? `<small>(${product.reviews})</small>` : ""}</p>` : ""}
       <p class="price"><strong>${money(product.price)}</strong>${hasDiscount(product) ? `<s>${money(product.mrp)}</s>` : ""}</p>
@@ -756,24 +778,111 @@ function showTrack(prefill = saved.read("lastOrder", {})) {
 }
 
 // ---------------------------------------------------------------------------
-// Product page (#product/<id>)
+// Product page (?p=<slug>)
 // ---------------------------------------------------------------------------
 let productQuantity = 1;
 const homeBlocks = () => [document.querySelector("#home-sections"), document.querySelector("#catalog"), document.querySelector("#home-sections-2")];
 
+const onProductPage = () => new URLSearchParams(location.search).has("p");
+
 function goHome() {
-  if (location.hash.startsWith("#product/")) history.pushState({}, "", "#catalog");
+  if (onProductPage()) history.pushState({}, "", location.pathname + "#catalog");
   syncRoute(false);
 }
 
+// The product named in the URL. Old #product/<id> links and outdated slugs are rewritten to the current link.
+function routeProduct() {
+  const legacy = location.hash.match(/^#product\/([^/?#]+)/);
+  const params = new URLSearchParams(location.search);
+  const product = legacy ? findProduct(decodeURIComponent(legacy[1])) : productFromSlug(params.get("p"));
+  if (product && (legacy || params.get("p") !== productSlug(product))) {
+    params.set("p", productSlug(product));
+    history.replaceState(null, "", `?${params}`);
+  } else if (!product && params.has("p") && products.length) {
+    history.replaceState(null, "", location.pathname + location.hash);
+    showToast("That product is no longer available", "error");
+  }
+  return product;
+}
+
+// Title, description, canonical link, social tags and structured data for the current view
+const homeSeo = {
+  title: document.title,
+  description: document.querySelector("meta[name=description]").content,
+  image: document.querySelector("meta[property='og:image']")?.content || new URL("images/hero.jpg", location.href).href
+};
+
+function setMeta(key, value) {
+  const attr = key.startsWith("og:") ? "property" : "name";
+  let tag = document.head.querySelector(`meta[${attr}="${key}"]`);
+  if (!tag) { tag = document.createElement("meta"); tag.setAttribute(attr, key); document.head.append(tag); }
+  tag.content = value;
+}
+
+function applySeo({ title, description, url, image, type = "website", data = null }) {
+  document.title = title;
+  [["description", description], ["og:title", title], ["og:description", description], ["og:url", url], ["og:image", image], ["og:type", type],
+    ["twitter:title", title], ["twitter:description", description], ["twitter:image", image]].forEach(([key, value]) => setMeta(key, value));
+  let canonical = document.head.querySelector("link[rel=canonical]");
+  if (!canonical) { canonical = document.createElement("link"); canonical.rel = "canonical"; document.head.append(canonical); }
+  canonical.href = url;
+  let ld = document.querySelector("#ld-page");
+  if (!data) return ld?.remove();
+  if (!ld) { ld = document.createElement("script"); ld.type = "application/ld+json"; ld.id = "ld-page"; document.head.append(ld); }
+  ld.textContent = JSON.stringify(data);
+}
+
+function productSeo(product) {
+  const name = plainText(product.name);
+  const detail = plainText(product.detail);
+  const url = productUrl(product);
+  const image = product.image ? new URL(plainText(product.image), location.href).href : homeSeo.image;
+  const description = `${name}${detail ? ` (${detail})` : ""} for ${money(product.price)}${canRent(product) ? ` or rent from ${money(product.rent)}/month` : ""} at Ranak Device Guru, Motihari. Home delivery, easy EMI and installation support.`;
+  return {
+    title: `${name} | Ranak Device Guru`,
+    description,
+    url,
+    image,
+    type: "product",
+    data: {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Product",
+          name,
+          description: detail || name,
+          image: [image],
+          sku: product.id,
+          category: plainText(product.category),
+          ...(product.brand && { brand: { "@type": "Brand", name: plainText(product.brand) } }),
+          offers: {
+            "@type": "Offer",
+            url,
+            priceCurrency: "INR",
+            price: product.price,
+            availability: "https://schema.org/InStock",
+            seller: { "@type": "Organization", name: "Ranak Device Guru" }
+          }
+        },
+        {
+          "@type": "BreadcrumbList",
+          itemListElement: [
+            { "@type": "ListItem", position: 1, name: "Home", item: homeUrl() },
+            { "@type": "ListItem", position: 2, name, item: url }
+          ]
+        }
+      ]
+    }
+  };
+}
+
 function syncRoute(scroll = true) {
-  const match = location.hash.match(/^#product\/([^/?#]+)/);
-  const product = match && findProduct(decodeURIComponent(match[1]));
+  const product = routeProduct();
   let page = document.querySelector("#product-view");
   homeBlocks().forEach((block) => { block.hidden = !!product; });
   if (!product) {
     if (page) page.hidden = true;
-    document.title = "Ranak Device Guru | Electronics, Appliances & Furniture";
+    applySeo({ ...homeSeo, url: homeUrl() });
     return;
   }
   if (!page) {
@@ -784,7 +893,7 @@ function syncRoute(scroll = true) {
   }
   page.hidden = false;
   productQuantity = 1;
-  document.title = `${new DOMParser().parseFromString(product.name, "text/html").body.textContent} | Ranak Device Guru`;
+  applySeo(productSeo(product));
   const related = products.filter((p) => p.id !== product.id && p.categorySlug === product.categorySlug).slice(0, 5);
   page.innerHTML = `
     <nav class="breadcrumb" aria-label="Breadcrumb"><a href="#home">Home</a><span>/</span><a href="#catalog" data-filter="${product.categorySlug}">${product.category}</a><span>/</span><span>${product.name}</span></nav>
@@ -803,6 +912,7 @@ function syncRoute(scroll = true) {
           <button class="btn btn-outline" data-pdp-add="${product.id}" type="button">${icon("add_shopping_cart")} Add to Cart</button>
           ${canRent(product) ? `<button class="btn btn-outline" data-rent="${product.id}" type="button">Rent ${money(product.rent)}/mo</button>` : ""}
           <button class="icon-round wish-lg ${state.wishlist.has(product.id) ? "saved" : ""}" data-wishlist="${product.id}" type="button" aria-label="Save to wishlist">${icon("favorite")}</button>
+          <button class="icon-round" data-share="${product.id}" type="button" aria-label="Share this product" title="Share">${icon("share")}</button>
         </div>
         <label class="pin-check">Check delivery<div><input id="pdp-pin" inputmode="numeric" maxlength="6" placeholder="Enter 6-digit PIN code" value="${RDG.esc(state.pin)}"><button data-pin-check type="button">Check</button></div></label>
         <p class="pin-result" id="pin-result"></p>
@@ -813,6 +923,42 @@ function syncRoute(scroll = true) {
   bindZoom();
   observeReveals(page);
   if (scroll) window.scrollTo({ top: 0, behavior: reducedMotion ? "auto" : "smooth" });
+}
+
+// Share dialog: the product link plus one-tap WhatsApp, Facebook, X, Telegram and email
+const shareText = (product) => `${plainText(product.name)} – ${money(product.price)} at Ranak Device Guru`;
+
+function shareProduct(product) {
+  const url = productUrl(product);
+  const text = shareText(product);
+  const message = encodeURIComponent(`${text}\n${url}`);
+  const links = [
+    ["whatsapp", "WhatsApp", "chat", `https://wa.me/?text=${message}`],
+    ["facebook", "Facebook", "thumb_up", `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`],
+    ["x", "X", "tag", `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`],
+    ["telegram", "Telegram", "send", `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`],
+    ["email", "Email", "mail", `mailto:?subject=${encodeURIComponent(plainText(product.name))}&body=${message}`]
+  ];
+  openDialog(`<div class="info-dialog share-dialog">
+    <p class="eyebrow">Share product</p>
+    <div class="share-product"><span class="cart-thumb">${productMedia(product)}</span><div><strong>${product.name}</strong><small>${money(product.price)}${canRent(product) ? ` · or rent from ${money(product.rent)}/mo` : ""}</small></div></div>
+    <div class="share-links">
+      ${links.map(([key, label, ic, href]) => `<a class="share-link share-${key}" href="${RDG.esc(href)}"${key === "email" ? "" : ` target="_blank" rel="noopener"`}>${icon(ic)}<span>${label}</span></a>`).join("")}
+      ${navigator.share ? `<button class="share-link" data-native-share="${product.id}" type="button">${icon("ios_share")}<span>More</span></button>` : ""}
+    </div>
+    <label class="field">Product link<div class="copy-row"><input id="share-url" value="${RDG.esc(url)}" readonly><button class="btn btn-primary btn-sm" data-copy-link type="button">${icon("content_copy")} Copy</button></div></label>
+  </div>`);
+}
+
+async function copyShareLink(button) {
+  const input = document.querySelector("#share-url");
+  try {
+    await navigator.clipboard.writeText(input.value);
+  } catch {
+    input.select();
+    document.execCommand("copy");
+  }
+  button.innerHTML = `${icon("check")} Copied`;
 }
 
 // Hover-to-zoom on the product photo (desktop pointers only)
@@ -1000,7 +1146,14 @@ document.addEventListener("click", (event) => {
   if (d.searchAll !== undefined) return runSearch();
   if (d.filter) { event.preventDefault(); dialog.close(); return setFilter(d.filter); }
   if (d.sort) { event.preventDefault(); state.sort = d.sort; state.showAll = true; return setFilter("All"); }
-  if (d.details) { event.preventDefault(); dialog.close(); hideSuggestions(); history.pushState({}, "", `#product/${d.details}`); return syncRoute(); }
+  if (d.details) { event.preventDefault(); dialog.close(); hideSuggestions(); history.pushState({}, "", productPath(findProduct(d.details))); return syncRoute(); }
+  if (d.share) return shareProduct(findProduct(d.share));
+  if (d.nativeShare) {
+    const product = findProduct(d.nativeShare);
+    navigator.share({ title: plainText(product.name), text: shareText(product), url: productUrl(product) }).catch(() => { /* share sheet dismissed */ });
+    return;
+  }
+  if (d.copyLink !== undefined) return copyShareLink(target);
   if (d.wishlist) {
     const id = d.wishlist;
     state.wishlist.has(id) ? state.wishlist.delete(id) : state.wishlist.add(id);
@@ -1066,7 +1219,7 @@ document.addEventListener("click", (event) => {
     case "emi": return openDialog(`<div class="info-dialog"><p class="eyebrow">Easy EMI Options</p><h2>Pay in easy monthly instalments</h2><ul class="pdp-perks"><li>${icon("credit_card")}Credit &amp; debit card EMI on major banks</li><li>${icon("percent")}No-cost EMI on selected products</li><li>${icon("schedule")}Tenures from 3 to 24 months</li></ul><p class="fine">EMI eligibility and interest are confirmed by our team before delivery.</p><button class="btn btn-primary" data-close type="button">Got it</button></div>`);
     case "wishlist": {
       const list = products.filter((p) => state.wishlist.has(p.id));
-      return openDialog(`<div class="cart-dialog"><h2>Your Wishlist</h2>${list.length ? list.map((p) => `<div class="cart-line"><span class="cart-thumb">${productMedia(p)}</span><div><strong>${p.name}</strong><small>${money(p.price)}</small></div><div class="wish-actions"><button class="btn btn-primary btn-xs" data-buy="${p.id}" type="button">Buy</button><a class="link-button" data-details="${p.id}" href="#product/${p.id}">View</a></div></div>`).join("") : `<div class="empty-state">${icon("favorite")}<p>Save products to find them here.</p><button class="btn btn-outline" data-close type="button">Keep browsing</button></div>`}</div>`);
+      return openDialog(`<div class="cart-dialog"><h2>Your Wishlist</h2>${list.length ? list.map((p) => `<div class="cart-line"><span class="cart-thumb">${productMedia(p)}</span><div><strong>${p.name}</strong><small>${money(p.price)}</small></div><div class="wish-actions"><button class="btn btn-primary btn-xs" data-buy="${p.id}" type="button">Buy</button><a class="link-button" data-details="${p.id}" href="${productPath(p)}">View</a></div></div>`).join("") : `<div class="empty-state">${icon("favorite")}<p>Save products to find them here.</p><button class="btn btn-outline" data-close type="button">Keep browsing</button></div>`}</div>`);
     }
   }
   if (target.id === "pin-button") return openDialog(`<div class="info-dialog"><p class="eyebrow">Delivery location</p><h2>Where should we deliver?</h2><label class="field">6-digit PIN code<input id="location-pin" inputmode="numeric" maxlength="6" placeholder="e.g. 845401" value="${RDG.esc(state.pin)}"></label><button class="btn btn-primary btn-block" data-save-pin type="button">Set location</button></div>`);
@@ -1083,9 +1236,9 @@ document.addEventListener("click", (event) => {
   if (target.id === "clear-filters") { state.query = ""; searchInput.value = ""; return setFilter("All"); }
   if (target.id === "view-rentals") { event.preventDefault(); return document.querySelector(".rental-grid").scrollIntoView({ behavior: "smooth", block: "center" }); }
   if (target.id === "to-top") return window.scrollTo({ top: 0, behavior: reducedMotion ? "auto" : "smooth" });
-  if (target.matches("a[href^='#']") && !target.hash.startsWith("#product/") && location.hash.startsWith("#product/")) {
+  if (target.matches("a[href^='#']") && onProductPage()) {
     event.preventDefault();
-    history.pushState({}, "", target.hash);
+    history.pushState({}, "", location.pathname + target.hash);
     syncRoute(false);
     document.querySelector(target.hash)?.scrollIntoView({ behavior: "smooth" });
   }

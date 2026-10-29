@@ -606,6 +606,23 @@ body.lock { overflow: hidden; }
 .tenure span { position: relative; }
 .tenure em { position: absolute; top: -9px; left: 50%; transform: translateX(-50%); background: var(--green); color: #fff; font-style: normal; font-size: 10px; font-weight: 700; padding: 1px 8px; border-radius: 999px; white-space: nowrap; }
 .wish-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.card-share { top: 52px; }
+.card-share .material-symbols-outlined { font-size: 19px; }
+.share-product { display: flex; align-items: center; gap: 12px; margin: 6px 0 20px; }
+.share-product strong { display: block; font-size: 16px; line-height: 1.3; }
+.share-product small { color: var(--muted); }
+.share-links { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.share-link { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--ink); text-decoration: none; }
+.share-link .material-symbols-outlined { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; background: var(--soft); color: var(--ink); transition: transform .2s; }
+.share-link:hover .material-symbols-outlined { transform: translateY(-2px); }
+.share-whatsapp .material-symbols-outlined { background: #25d366; color: #fff; }
+.share-facebook .material-symbols-outlined { background: #1877f2; color: #fff; }
+.share-x .material-symbols-outlined { background: #111; color: #fff; }
+.share-telegram .material-symbols-outlined { background: #29a9eb; color: #fff; }
+.share-email .material-symbols-outlined { background: var(--blue); color: #fff; }
+.copy-row { display: flex; gap: 8px; margin-top: 6px; }
+.field .copy-row input { margin-top: 0; flex: 1; min-width: 0; font-size: 13px; color: var(--muted); }
+.copy-row .btn { flex-shrink: 0; }
 .legal h3 { font-size: 15px; margin: 14px 0 4px; }
 .legal p { font-size: 14px; margin-bottom: 4px; }
 .footer-contact { list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 6px; font-size: 14px; }

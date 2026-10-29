@@ -6,6 +6,9 @@ window.RDG_CONFIG = {
   supabaseAnonKey: "sb_publishable_6k5gk4707iXGMMRUcxqP2A_-7mPZMg5",
   bucket: "product-images",
 
+  // The live site address, used by tools/build-sitemap.mjs. Also update it in index.html and robots.txt if it changes.
+  siteUrl: "https://ranakdeviceguruareraj.in/",
+
   // Store contact details shown on the site. Leave a value empty to hide it.
   store: {
     phone: "",            // e.g. "+91 98765 43210"
