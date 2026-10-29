@@ -125,6 +125,7 @@ document.querySelector("#store-app").innerHTML = `
         <div class="search-suggest" id="search-suggest" role="listbox" hidden></div>
       </form>
       <div class="header-actions">
+        <button class="header-action" data-action="install" type="button" hidden>${icon("install_mobile")}<small>Get App</small></button>
         <button class="header-action account-btn" id="account-btn" data-action="account" type="button">${icon("person")}<small>Sign in</small></button>
         <button class="header-action" data-action="wishlist" type="button">${icon("favorite")}<small>Wishlist</small><span class="badge" id="wishlist-count" hidden>0</span></button>
         <button class="header-action" data-action="cart" type="button">${icon("shopping_cart")}<small>Cart</small><span class="badge" id="cart-count" hidden>0</span></button>
@@ -277,6 +278,13 @@ document.querySelector("#store-app").innerHTML = `
     <button data-action="account" type="button" id="account-btn-mobile">${icon("person")}<small>Account</small></button>
     <button data-action="cart" type="button">${icon("shopping_cart")}<small>Cart</small><span class="badge" id="cart-count-mobile" hidden>0</span></button>
   </nav>
+
+  <div class="install-banner" id="install-banner" role="region" aria-label="Install the app" hidden>
+    <img src="images/icons/icon-192.png" alt="" width="44" height="44">
+    <div><strong>Get the Ranak Device Guru app</strong><small>Shop faster, straight from your home screen</small></div>
+    <button class="btn btn-primary btn-xs" data-action="install" type="button">Install</button>
+    <button class="install-close" data-install-dismiss type="button" aria-label="Not now">${icon("close")}</button>
+  </div>
 
   <button class="to-top" id="to-top" type="button" aria-label="Back to top">${icon("arrow_upward")}</button>
 
@@ -961,6 +969,49 @@ async function copyShareLink(button) {
   button.innerHTML = `${icon("check")} Copied`;
 }
 
+// ---------------------------------------------------------------------------
+// Install as an app (manifest.webmanifest + sw.js)
+// ---------------------------------------------------------------------------
+let installPrompt = null;
+const isStandalone = () => window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+function setInstallable(available) {
+  document.querySelectorAll(".header-action[data-action=install]").forEach((button) => { button.hidden = !available; });
+  // The banner is offered once, a few seconds in, until the visitor installs or dismisses it
+  const banner = document.querySelector("#install-banner");
+  if (!available) banner.hidden = true;
+  else if (!saved.read("installDismissed", false)) setTimeout(() => { banner.hidden = !installPrompt && !isIos; }, 4000);
+}
+
+async function installApp() {
+  document.querySelector("#install-banner").hidden = true;
+  if (!installPrompt) {
+    // iPhone and iPad have no install prompt; Safari's Share menu does it
+    return openDialog(`<div class="info-dialog"><p class="eyebrow">Install the app</p><h2>Add Ranak Device Guru to your Home Screen</h2><ol class="install-steps"><li>Open this page in <b>Safari</b></li><li>Tap the <b>Share</b> button ${icon("ios_share")} at the bottom of the screen</li><li>Choose <b>Add to Home Screen</b>, then tap <b>Add</b></li></ol><button class="btn btn-primary" data-close type="button">Got it</button></div>`);
+  }
+  installPrompt.prompt();
+  const { outcome } = await installPrompt.userChoice;
+  installPrompt = null;
+  setInstallable(false);
+  if (outcome === "accepted") saved.write("installDismissed", true);
+}
+
+window.addEventListener("beforeinstallprompt", (event) => {
+  event.preventDefault();
+  installPrompt = event;
+  setInstallable(true);
+});
+window.addEventListener("appinstalled", () => {
+  installPrompt = null;
+  setInstallable(false);
+  showToast("Ranak Device Guru app installed");
+});
+if (isIos && !isStandalone()) setInstallable(true);
+if ("serviceWorker" in navigator && location.protocol !== "file:") {
+  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch((error) => console.error("App mode unavailable", error)));
+}
+
 // Hover-to-zoom on the product photo (desktop pointers only)
 function bindZoom() {
   const box = document.querySelector("#pdp-zoom");
@@ -1205,7 +1256,10 @@ document.addEventListener("click", (event) => {
   if (d.remove) { state.cart = state.cart.filter((entry) => entry.key !== d.remove); persistCart(); updateBadges(); return renderDrawer("cart"); }
   if (d.infoPage) { event.preventDefault(); return showInfoPage(d.infoPage); }
 
+  if (d.installDismiss !== undefined) { saved.write("installDismissed", true); document.querySelector("#install-banner").hidden = true; return; }
+
   switch (d.action) {
+    case "install": return installApp();
     case "cart": return openDrawer("cart");
     case "account": return state.user ? showAccountMenu() : showLogin();
     case "my-orders":

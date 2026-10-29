@@ -35,6 +35,12 @@ node tools/build-sitemap.mjs
 
 Then submit `https://ranakdeviceguruareraj.in/sitemap.xml` once in [Google Search Console](https://search.google.com/search-console).
 
+## Installable app
+
+The store installs as an app on Android, iPhone and desktop (`manifest.webmanifest`, `sw.js`, icons in `images/icons/`). On Android and desktop Chrome/Edge, visitors see a **Get App** button and a one-time install banner; on iPhone the button explains Safari's **Share → Add to Home Screen**. Once installed it opens full-screen from its own icon, and it keeps working on a weak connection using the last saved pages, photos and catalogue.
+
+Code and page updates reach installed apps automatically the next time they open online. If you change the list of files in `SHELL` at the top of `sw.js`, bump `CACHE` (e.g. `rdg-v2`) so old saved copies are cleared.
+
 ## How orders work
 
 Customers check out with their name, phone and address, and pay by cash or UPI on delivery. `place_order()` re-reads prices from the database, so totals can't be changed in the browser. The owner sees new orders in the dashboard's **Orders** tab, calls the customer to confirm, and updates the status. Customers can follow that status under **Track Order** using their order number and phone number.

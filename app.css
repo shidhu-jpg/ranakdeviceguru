@@ -726,3 +726,22 @@ body.lock { overflow: hidden; }
 .signed-in-as { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; background: var(--soft); font-size: 13.5px; margin-top: 8px; }
 .signed-in-as b { word-break: break-all; }
 .mobile-nav .avatar { margin-bottom: 1px; }
+
+/* Install-the-app banner */
+.install-banner { position: fixed; left: 20px; bottom: 20px; z-index: 45; width: min(400px, calc(100% - 40px)); display: flex; align-items: center; gap: 12px; padding: 12px 12px 12px 14px; background: #fff; border-radius: 14px; box-shadow: 0 12px 34px rgba(11, 42, 92, .22); animation: install-in .4s ease-out; }
+.install-banner img { border-radius: 10px; flex-shrink: 0; }
+.install-banner div { flex: 1; min-width: 0; }
+.install-banner strong { display: block; font-size: 14px; line-height: 1.25; }
+.install-banner small { display: block; color: var(--muted); font-size: 12px; line-height: 1.35; margin-top: 2px; }
+.install-banner .btn { flex: none; width: auto; padding: 8px 16px; }
+.install-close { color: var(--muted); display: grid; place-items: center; }
+.install-close .material-symbols-outlined { font-size: 20px; }
+.install-steps { padding-left: 20px; margin: 4px 0 18px; display: grid; gap: 8px; font-size: 14.5px; }
+.install-steps .material-symbols-outlined { font-size: 18px; vertical-align: -3px; color: var(--blue); }
+@keyframes install-in { from { opacity: 0; transform: translateY(16px); } }
+@media (max-width: 640px) {
+  .install-banner { left: 12px; bottom: 74px; width: calc(100% - 24px); }
+}
+@media (display-mode: standalone) {
+  .install-banner, .header-action[data-action=install] { display: none !important; }
+}
