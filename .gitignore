@@ -2,3 +2,9 @@
 Thumbs.db
 .DS_Store
 .vscode/
+
+# Android app build (generated in CI)
+node_modules/
+www/
+android/
+package-lock.json

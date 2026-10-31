@@ -1,0 +1,18 @@
+{
+  "name": "ranak-device-guru",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Ranak Device Guru storefront, packaged as an Android app with Capacitor",
+  "scripts": {
+    "build:web": "node scripts/copy-web.mjs",
+    "android:sync": "npm run build:web && npx cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.4.0",
+    "@capacitor/core": "^7.4.0"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^7.4.0"
+  }
+}

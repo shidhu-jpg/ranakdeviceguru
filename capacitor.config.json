@@ -1,0 +1,8 @@
+{
+  "appId": "in.ranakdeviceguru.app",
+  "appName": "Ranak Device Guru",
+  "webDir": "www",
+  "android": {
+    "backgroundColor": "#ffffff"
+  }
+}
