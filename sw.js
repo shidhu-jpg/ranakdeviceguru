@@ -3,8 +3,8 @@
 // last saved copy when offline. Photos and fonts are served from the cache and refreshed in the background.
 // The catalogue is fetched fresh too, with the last copy kept for offline browsing (place_order() re-checks
 // prices, so a stale copy can't change what anyone pays). Sign-in and order requests always go to the network.
-const CACHE = "rdg-v2";
-const SHELL = ["./", "index.html", "app.css", "app.js", "data.js", "config.js", "manifest.webmanifest", "images/hero.jpg", "images/icons/icon-192.png"];
+const CACHE = "rdg-v3";
+const SHELL = ["./", "index.html", "app.css", "app.js", "data.js", "config.js", "manifest.webmanifest", "images/hero.jpg", "images/icons/icon-192.png", "images/logo.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));

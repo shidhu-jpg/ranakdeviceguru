@@ -115,7 +115,7 @@ document.querySelector("#store-app").innerHTML = `
   <header class="site-header" id="site-header">
     <div class="header-inner container">
       <a class="brand" href="#home" aria-label="Ranak Device Guru home">
-        <span class="brand-mark">${icon("devices")}</span>
+        <span class="brand-mark"><img src="images/logo.png" alt="" width="46" height="46"></span>
         <span class="brand-text"><strong>Ranak<br>Device Guru</strong><small>Electronics • Appliances • Furniture</small></span>
       </a>
       <button class="location-button" id="pin-button" type="button">${icon("location_on")}<span><small>Deliver to</small><strong id="pin-label"></strong></span></button>
@@ -257,7 +257,7 @@ document.querySelector("#store-app").innerHTML = `
   <footer class="site-footer">
     <div class="container footer-grid">
       <div>
-        <a class="brand brand-light" href="#home"><span class="brand-mark">${icon("devices")}</span><span class="brand-text"><strong>Ranak<br>Device Guru</strong></span></a>
+        <a class="brand brand-light" href="#home"><span class="brand-mark"><img src="images/logo.png" alt="" width="46" height="46"></span><span class="brand-text"><strong>Ranak<br>Device Guru</strong></span></a>
         <p>Electronics, home appliances and furniture — to buy or rent — delivered to your door.</p>
         <ul class="footer-contact">
           ${store.phone ? `<li>${icon("call")}<a href="tel:${store.phone.replace(/[^\d+]/g, "")}">${RDG.esc(store.phone)}</a></li>` : ""}
