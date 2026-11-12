@@ -5,8 +5,8 @@ window.RDG_CONFIG = {
 
   // Store contact details shown on the site. Leave a value empty to hide it.
   store: {
-    phone: "",            // e.g. "+91 98765 43210"
-    whatsapp: "",         // digits with country code, e.g. "919876543210" — REQUIRED: checkout sends orders to this WhatsApp number
+    phone: "+91 94722 08860",
+    whatsapp: "919472208860", // digits with country code — checkout sends orders to this WhatsApp number
     email: "hello@ranakdeviceguru.in",
     address: "Motihari, Bihar 845401"
   }
