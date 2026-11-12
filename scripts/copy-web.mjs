@@ -1,5 +1,5 @@
 // Copies the storefront files into www/ for the Android app.
-// The admin panel, database scripts and build tools are left out of the app.
+// Build tools are left out of the app.
 import { cpSync, rmSync, mkdirSync } from "node:fs";
 
 const files = [

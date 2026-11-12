@@ -1,9 +1,8 @@
 // Service worker: makes the store installable as an app and keeps it usable on a weak connection.
 // Pages and scripts are fetched fresh when online (so updates show up straight away) and fall back to the
 // last saved copy when offline. Photos and fonts are served from the cache and refreshed in the background.
-// The catalogue is fetched fresh too, with the last copy kept for offline browsing (place_order() re-checks
-// prices, so a stale copy can't change what anyone pays). Sign-in and order requests always go to the network.
-const CACHE = "rdg-v3";
+// The catalogue lives in data.js, so it is saved with the rest of the site.
+const CACHE = "rdg-v4";
 const SHELL = ["./", "index.html", "app.css", "app.js", "data.js", "config.js", "manifest.webmanifest", "images/hero.jpg", "images/icons/icon-192.png", "images/logo.png"];
 
 self.addEventListener("install", (event) => {
@@ -55,9 +54,9 @@ self.addEventListener("fetch", (event) => {
 
   if (request.mode === "navigate") return event.respondWith(networkFirst(request, "./"));
   if (sameOrigin && request.destination === "image") return event.respondWith(staleWhileRevalidate(event));
-  if (sameOrigin || /^\/rest\/v1\/(products|categories)$/.test(url.pathname)) return event.respondWith(networkFirst(request));
-  // Product photos in Supabase storage, Google Fonts and the pinned supabase-js build
-  if (url.pathname.includes("/storage/v1/object/public/") || /fonts\.(googleapis|gstatic)\.com$/.test(url.hostname) || url.hostname === "cdn.jsdelivr.net") {
+  if (sameOrigin) return event.respondWith(networkFirst(request));
+  // Google Fonts
+  if (/fonts\.(googleapis|gstatic)\.com$/.test(url.hostname)) {
     return event.respondWith(staleWhileRevalidate(event));
   }
 });

@@ -1,25 +1,22 @@
 # Ranak Device Guru
 
-Online store for Ranak Device Guru, Motihari: electronics, home appliances and furniture to **buy or rent**. Plain HTML/CSS/JS with no build step, backed by Supabase.
+Online store for Ranak Device Guru, Motihari: electronics, home appliances and furniture to **buy or rent**. Plain HTML/CSS/JS with no build step and no database: the whole site, including every product photo, is static files.
 
 | File | Purpose |
 | --- | --- |
-| `index.html`, `app.js`, `app.css` | Storefront: catalogue, search, cart drawer, checkout, order tracking |
-| `admin.html`, `admin.js`, `admin.css` | Owner dashboard: orders, products (with photo upload), categories |
-| `data.js` | Loads the catalogue from Supabase (falls back to a demo catalogue if not configured) |
-| `config.js` | Supabase URL + publishable key, store phone/WhatsApp/email |
-| `supabase/schema.sql` | Catalogue tables, security rules, `product-images` bucket, starter products |
-| `supabase/orders.sql` | Orders table plus `place_order` / `track_order` functions |
+| `index.html`, `app.js`, `app.css` | Storefront: catalogue, search, cart drawer, WhatsApp checkout |
+| `data.js` | The catalogue: categories and products (name, price, MRP, rent, photo) |
+| `config.js` | Site address and store phone/WhatsApp/email/address |
+| `images/` | All photos used on the site |
 
 ## Setup
 
-1. In Supabase → **SQL Editor**, run `supabase/schema.sql`, then `supabase/orders.sql`.
-2. In **Authentication → Users**, add the owner, then make them an admin:
-   ```sql
-   insert into public.admins (user_id) select id from auth.users where email = 'owner@email.com';
-   ```
-3. Put the project URL and publishable key in `config.js`, along with the store's phone and WhatsApp number.
-4. Deploy the folder to any static host (GitHub Pages, Netlify, Cloudflare Pages). The `supabase/` and `tools/` folders don't need to be deployed.
+1. In `config.js`, set `store.whatsapp` to the store's WhatsApp number (digits with country code, e.g. `919876543210`). Checkout sends orders there, so the store can't take online orders without it. Add `store.phone` too.
+2. Deploy the folder to any static host (GitHub Pages, Netlify, Cloudflare Pages). The `tools/` folder doesn't need to be deployed.
+
+## Adding or changing products
+
+Edit the `PRODUCTS` list in `data.js` and put the photo in `images/`. Keep a product's `id` unchanged once it's live, because product links are built from it; a new product just needs any new unique id. Then regenerate the sitemap and redeploy.
 
 ## Product links and SEO
 
@@ -43,4 +40,4 @@ Code and page updates reach installed apps automatically the next time they open
 
 ## How orders work
 
-Customers check out with their name, phone and address, and pay by cash or UPI on delivery. `place_order()` re-reads prices from the database, so totals can't be changed in the browser. The owner sees new orders in the dashboard's **Orders** tab, calls the customer to confirm, and updates the status. Customers can follow that status under **Track Order** using their order number and phone number.
+Customers fill in their name, mobile number, address and PIN code at checkout, then press **Order on WhatsApp**. WhatsApp opens with the full order (items, buy/rent totals, address and an order reference like `RDG-1A2B3C`) ready to send to the store's number. Payment is cash or UPI on delivery. The store team confirms on a call; customers ask about their order on WhatsApp using the reference.

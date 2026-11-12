@@ -32,16 +32,9 @@ const announcements = [
   ["event_repeat", "Rent appliances &amp; furniture on flexible monthly plans"]
 ];
 
-const orderSteps = [
-  { key: "new", label: "Order placed", icon: "receipt_long" },
-  { key: "confirmed", label: "Confirmed", icon: "task_alt" },
-  { key: "out_for_delivery", label: "Out for delivery", icon: "local_shipping" },
-  { key: "delivered", label: "Delivered", icon: "home" }
-];
-
 const tenures = [3, 6, 12];
 const store = RDG.store;
-const state = { category: "All", query: "", sort: "featured", showAll: false, cart: [], wishlist: new Set(), pin: "", user: null, profile: null, google: false };
+const state = { category: "All", query: "", sort: "featured", showAll: false, cart: [], wishlist: new Set(), pin: "" };
 const money = (amount) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(amount);
 const findProduct = (id) => products.find((product) => product.id === id);
 const hasDiscount = (product) => product.mrp && product.mrp > product.price;
@@ -50,7 +43,7 @@ const discount = (product) => (hasDiscount(product) ? Math.round((1 - product.pr
 const icon = (name, cls = "") => `<span class="material-symbols-outlined ${cls}" aria-hidden="true">${name}</span>`;
 const arrow = icon("arrow_forward", "btn-arrow");
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-// Must match place_order() in supabase/orders.sql
+// Rent per month for 3/6/12-month plans
 const rentPrice = (product, tenure) => Math.round(product.rent * (tenure === 3 ? 1.3 : tenure === 6 ? 1.12 : 1));
 const plainText = (html) => new DOMParser().parseFromString(html || "", "text/html").body.textContent;
 
@@ -126,7 +119,7 @@ document.querySelector("#store-app").innerHTML = `
       </form>
       <div class="header-actions">
         <button class="header-action" data-action="install" type="button" hidden>${icon("install_mobile")}<small>Get App</small></button>
-        <button class="header-action account-btn" id="account-btn" data-action="account" type="button">${icon("person")}<small>Sign in</small></button>
+        <button class="header-action" data-action="support" type="button">${icon("support_agent")}<small>Help</small></button>
         <button class="header-action" data-action="wishlist" type="button">${icon("favorite")}<small>Wishlist</small><span class="badge" id="wishlist-count" hidden>0</span></button>
         <button class="header-action" data-action="cart" type="button">${icon("shopping_cart")}<small>Cart</small><span class="badge" id="cart-count" hidden>0</span></button>
       </div>
@@ -267,7 +260,7 @@ document.querySelector("#store-app").innerHTML = `
       </div>
       <div><h4>Shop</h4><a href="#catalog" data-filter="Mobiles">Mobiles</a><a href="#catalog" data-filter="Electronics">Electronics</a><a href="#catalog" data-filter="Home Appliances">Home Appliances</a><a href="#catalog" data-filter="Furniture">Furniture</a></div>
       <div><h4>Help</h4><button data-action="track" type="button">Track Your Order</button><a href="#support" data-action="support">Service &amp; Support</a><a href="#rent">Rental Plans</a><button data-action="emi" type="button">EMI Options</button></div>
-      <div><h4>Company</h4><a href="#privacy" data-info-page="privacy">Privacy Policy</a><a href="#terms" data-info-page="terms">Terms &amp; Conditions</a><a href="admin.html">Owner login</a></div>
+      <div><h4>Company</h4><a href="#privacy" data-info-page="privacy">Privacy Policy</a><a href="#terms" data-info-page="terms">Terms &amp; Conditions</a></div>
     </div>
     <div class="container footer-bottom"><small>© ${new Date().getFullYear()} Ranak Device Guru · Motihari, Bihar</small></div>
   </footer>
@@ -275,7 +268,7 @@ document.querySelector("#store-app").innerHTML = `
   <nav class="mobile-nav" aria-label="Mobile navigation">
     <a href="#home">${icon("home")}<small>Home</small></a>
     <a href="#categories">${icon("grid_view")}<small>Categories</small></a>
-    <button data-action="account" type="button" id="account-btn-mobile">${icon("person")}<small>Account</small></button>
+    <button data-action="wishlist" type="button">${icon("favorite")}<small>Wishlist</small></button>
     <button data-action="cart" type="button">${icon("shopping_cart")}<small>Cart</small><span class="badge" id="cart-count-mobile" hidden>0</span></button>
   </nav>
 
@@ -473,128 +466,7 @@ const totals = () => ({
 });
 
 // ---------------------------------------------------------------------------
-// Customer accounts (Google sign-in via Supabase Auth)
-// ---------------------------------------------------------------------------
-const googleIcon = `<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.2-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.2-.1-2.3-.4-3.5z"/></svg>`;
-const googleButton = (resume = "", label = "Continue with Google") =>
-  `<button class="btn-google" data-google-login="${resume}" type="button">${googleIcon}<span>${label}</span></button>`;
-const displayName = () => state.profile?.full_name || state.user?.user_metadata?.full_name || state.user?.user_metadata?.name || state.user?.email?.split("@")[0] || "";
-const avatarUrl = () => RDG.safeUrl(state.profile?.avatar_url || state.user?.user_metadata?.avatar_url || "");
-const avatar = (size = "") => (avatarUrl()
-  ? `<img class="avatar ${size}" src="${avatarUrl()}" alt="" referrerpolicy="no-referrer">`
-  : `<span class="avatar ${size} avatar-initial">${RDG.esc((displayName()[0] || "?").toUpperCase())}</span>`);
-
-async function signInWithGoogle(resume) {
-  if (!RDG.configured || !state.google) return showToast("Google sign-in isn't switched on yet. Please call or WhatsApp us to order.", "error");
-  if (location.protocol === "file:") return showToast("Google sign-in works once the site is online (not from a local file).", "error");
-  saved.write("resume", resume || "");
-  const { error } = await RDG.client.auth.signInWithOAuth({
-    provider: "google",
-    options: { redirectTo: location.origin + location.pathname, queryParams: { prompt: "select_account" } }
-  });
-  if (error) showToast(error.message, "error");
-}
-
-async function loadProfile() {
-  state.profile = null;
-  if (!state.user) return;
-  const { data } = await RDG.client.from("customers").select("*").eq("id", state.user.id).maybeSingle();
-  state.profile = data;
-}
-
-function renderAccount() {
-  const btn = document.querySelector("#account-btn");
-  const mobile = document.querySelector("#account-btn-mobile");
-  if (state.user) {
-    const first = RDG.esc(displayName().split(" ")[0]);
-    btn.innerHTML = `${avatar("sm")}<small>${first || "Account"}</small>`;
-    mobile.innerHTML = `${avatar("xs")}<small>Account</small>`;
-  } else {
-    btn.innerHTML = `${icon("person")}<small>Sign in</small>`;
-    mobile.innerHTML = `${icon("person")}<small>Account</small>`;
-  }
-}
-
-function showLogin() {
-  openDialog(`<div class="info-dialog login-dialog">
-    <span class="login-mark">${icon("devices")}</span>
-    <h2>Welcome to Ranak Device Guru</h2>
-    <p>Sign in to order in one tap and follow every delivery.</p>
-    <ul class="login-perks"><li>${icon("package_2")}Track all your orders in one place</li><li>${icon("bolt")}Faster checkout with your saved address</li><li>${icon("event_repeat")}Manage rentals and repeat purchases</li></ul>
-    ${state.google ? googleButton() : `<p class="form-error">Google sign-in is being set up. Please call or WhatsApp us to order.</p>`}
-    <p class="fine">We only use your name and email to manage your orders. See our <a href="#privacy" data-info-page="privacy">Privacy Policy</a>.</p>
-  </div>`);
-}
-
-function showAccountMenu() {
-  openDialog(`<div class="info-dialog account-menu">
-    <div class="account-head">${avatar("lg")}<div><h2>${RDG.esc(displayName())}</h2><p class="muted">${RDG.esc(state.user.email || "")}</p></div></div>
-    <div class="account-links">
-      <button data-action="my-orders" type="button">${icon("package_2")}<span><b>My Orders</b><small>Track and review your orders</small></span>${icon("chevron_right")}</button>
-      <button data-action="wishlist" type="button">${icon("favorite")}<span><b>Wishlist</b><small>${state.wishlist.size} saved item${state.wishlist.size === 1 ? "" : "s"}</small></span>${icon("chevron_right")}</button>
-      <button data-action="track" type="button">${icon("search")}<span><b>Track by order number</b><small>For orders placed by phone</small></span>${icon("chevron_right")}</button>
-    </div>
-    <button class="btn btn-outline btn-block" data-signout type="button">${icon("logout")} Sign out</button>
-  </div>`);
-}
-
-const statusText = { new: "Order placed", confirmed: "Confirmed", out_for_delivery: "Out for delivery", delivered: "Delivered", cancelled: "Cancelled" };
-
-function orderTimeline(status) {
-  if (status === "cancelled") return `<p class="track-cancelled">${icon("cancel")} This order was cancelled. Contact us if you have questions.</p>`;
-  const current = orderSteps.findIndex((s) => s.key === status);
-  return `<ol class="timeline">${orderSteps.map((s, i) => `<li class="${i <= current ? "done" : ""} ${i === current ? "current" : ""}">${icon(s.icon)}<span>${s.label}</span></li>`).join("")}</ol>`;
-}
-
-async function showMyOrders() {
-  if (!state.user) return showLogin();
-  openDialog(`<div class="info-dialog my-orders"><p class="eyebrow">My account</p><h2>My Orders</h2><div id="my-orders-list">${skeletonCards(2, "sk-order")}</div></div>`);
-  const { data, error } = await RDG.client.from("orders").select("*").eq("user_id", state.user.id).order("created_at", { ascending: false });
-  const list = document.querySelector("#my-orders-list");
-  if (!list) return;
-  if (error) { list.innerHTML = `<p class="form-error">${/relation|schema cache/i.test(error.message) ? "Orders are being set up. Please check back soon." : RDG.esc(error.message)}</p>`; return; }
-  if (!data.length) { list.innerHTML = `<div class="empty-state">${icon("package_2")}<h3>No orders yet</h3><p>When you place an order it will show up here.</p><button class="btn btn-primary" data-close data-goto-catalog type="button">Start shopping</button></div>`; return; }
-  list.innerHTML = data.map((o) => `<article class="track-card my-order">
-    <div class="track-head"><div><b>${RDG.esc(o.order_number)}</b><small>${new Date(o.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</small></div><span class="status-pill s-${o.status}">${statusText[o.status] || o.status}</span></div>
-    ${orderTimeline(o.status)}
-    <ul class="track-items">${o.items.map((it) => `<li><span>${RDG.esc(it.name)} × ${it.quantity}${it.mode === "rent" ? ` <em class="rent-chip">Rent ${it.tenure} mo</em>` : ""}</span><b>${money(it.unit_price * it.quantity)}${it.mode === "rent" ? "/mo" : ""}</b></li>`).join("")}</ul>
-    <div class="my-order-total">${o.purchase_total ? `<span>Total <b>${money(o.purchase_total)}</b></span>` : ""}${o.monthly_rent_total ? `<span>Rent <b>${money(o.monthly_rent_total)}/mo</b></span>` : ""}</div>
-  </article>`).join("");
-}
-
-async function initAuth() {
-  if (!RDG.configured) return;
-  const [providers, { data }] = await Promise.all([RDG.authProviders(), RDG.client.auth.getSession()]);
-  state.google = Boolean(providers.google);
-  state.user = data.session?.user || null;
-  await loadProfile();
-  renderAccount();
-  // Remove the ?code=… left behind by the Google redirect
-  if (/[?&]code=/.test(location.search)) history.replaceState(null, "", location.pathname + location.hash);
-  RDG.client.auth.onAuthStateChange((event, session) => {
-    const wasSignedIn = Boolean(state.user);
-    state.user = session?.user || null;
-    if (event === "SIGNED_OUT" || (event === "SIGNED_IN" && !wasSignedIn)) {
-      loadProfile().then(() => {
-        renderAccount();
-        if (event === "SIGNED_IN") resumeAfterLogin();
-      });
-    }
-  });
-  if (state.user) resumeAfterLogin();
-}
-
-function resumeAfterLogin() {
-  const resume = saved.read("resume", "");
-  if (!resume) return;
-  saved.write("resume", "");
-  showToast(`Signed in as ${RDG.esc(displayName())}`);
-  if (resume === "checkout" && state.cart.length) openDrawer("checkout");
-  if (resume === "orders") showMyOrders();
-}
-
-// ---------------------------------------------------------------------------
-// Cart drawer → checkout → confirmation
+// Cart drawer → checkout (sent as a WhatsApp message) → confirmation
 // ---------------------------------------------------------------------------
 let lastFocus = null;
 
@@ -645,26 +517,11 @@ function cartView() {
 
 function checkoutView() {
   const { buy, rent } = totals();
-  if (!state.user) {
-    return `${drawerHead("Checkout", true)}
-      <div class="drawer-body checkout-login">
-        <span class="login-mark">${icon("lock_person")}</span>
-        <h3>Sign in to place your order</h3>
-        <p>Sign in with Google so you can track your order and we can reach you about delivery. Your cart is saved.</p>
-        ${state.google ? googleButton("checkout") : `<p class="form-error">Online ordering opens soon. Please call or WhatsApp us to order.</p>`}
-        <div class="checkout-total">
-          ${buy ? `<p><span>Purchase total</span><strong>${money(buy)}</strong></p>` : ""}
-          ${rent ? `<p><span>Monthly rent</span><strong>${money(rent)}/mo</strong></p>` : ""}
-        </div>
-      </div>`;
-  }
-  const profile = state.profile || {};
-  const draft = { name: displayName(), phone: profile.phone, address: profile.address, pincode: profile.pincode, ...saved.read("customer", {}) };
+  const draft = saved.read("customer", {});
   const v = (k) => RDG.esc(draft[k] || "");
   return `${drawerHead("Checkout", true)}
     <form class="drawer-body checkout-form" id="checkout-form" novalidate>
       <div class="checkout-summary">${state.cart.map((item) => { const p = findProduct(item.id); return `<span class="cart-thumb sm" title="${p.name}">${productMedia(p)}<i>${item.quantity}</i></span>`; }).join("")}</div>
-      <div class="signed-in-as">${avatar("sm")}<span>Ordering as <b>${RDG.esc(state.user.email || displayName())}</b></span></div>
       <h3 class="form-section">${icon("person")} Contact details</h3>
       <label class="field">Full name<input name="name" autocomplete="name" required minlength="2" maxlength="80" value="${v("name")}"></label>
       <label class="field">Mobile number<input name="phone" type="tel" inputmode="numeric" autocomplete="tel-national" required pattern="[6-9][0-9]{9}" maxlength="10" placeholder="10-digit mobile number" value="${v("phone")}"></label>
@@ -672,44 +529,65 @@ function checkoutView() {
       <label class="field">House, street, area<textarea name="address" rows="3" autocomplete="street-address" required minlength="10" maxlength="400">${v("address")}</textarea></label>
       <label class="field">PIN code<input name="pincode" inputmode="numeric" autocomplete="postal-code" required pattern="[1-9][0-9]{5}" maxlength="6" value="${RDG.esc(draft.pincode || state.pin || "")}"></label>
       <label class="field">Notes for our team <span class="optional">(optional)</span><input name="notes" maxlength="300" placeholder="Preferred delivery time, landmark…" value="${v("notes")}"></label>
-      <div class="pay-note">${icon("payments")}<div><b>Pay on delivery</b><small>Cash or UPI when your order arrives. For rentals, our team confirms the plan and refundable deposit on a call.</small></div></div>
+      <div class="pay-note">${icon("payments")}<div><b>Pay on delivery</b><small>Your order is sent to us on WhatsApp. Pay by cash or UPI when it arrives. For rentals, our team confirms the plan and refundable deposit on a call.</small></div></div>
       <p class="form-error" id="checkout-error" role="alert"></p>
       <div class="checkout-total">
         ${buy ? `<p><span>Purchase total</span><strong>${money(buy)}</strong></p>` : ""}
         ${rent ? `<p><span>Monthly rent</span><strong>${money(rent)}/mo</strong></p>` : ""}
       </div>
-      <button class="btn btn-primary btn-block btn-shine" type="submit">${icon("lock")} Place Order</button>
+      <button class="btn btn-green btn-block btn-shine" type="submit">${icon("chat")} Order on WhatsApp</button>
     </form>`;
 }
 
+function orderMessage(customer, orderNumber) {
+  const { buy, rent } = totals();
+  const items = state.cart.map((item, i) => {
+    const p = findProduct(item.id);
+    const name = plainText(p.name);
+    return item.mode === "rent"
+      ? `${i + 1}. ${name} × ${item.quantity} — Rent ${item.tenure} months @ ${money(rentPrice(p, item.tenure))}/mo`
+      : `${i + 1}. ${name} × ${item.quantity} — ${money(p.price * item.quantity)}`;
+  });
+  return [
+    `*New order ${orderNumber}* — Ranak Device Guru`,
+    "",
+    ...items,
+    "",
+    buy ? `Purchase total: ${money(buy)}` : "",
+    rent ? `Monthly rent: ${money(rent)}/mo` : "",
+    "",
+    `Name: ${customer.name}`,
+    `Mobile: ${customer.phone}`,
+    `Address: ${customer.address}`,
+    `PIN: ${customer.pincode}`,
+    customer.notes ? `Notes: ${customer.notes}` : "",
+    "",
+    "Payment: on delivery (cash/UPI)"
+  ].filter((line, i, all) => line || all[i - 1]).join("\n");
+}
+
 function doneView(order) {
-  const msg = `Hello Ranak Device Guru, I just placed order ${order.order_number}.`;
-  const wa = whatsappLink(msg);
-  return `${drawerHead("Order placed")}
+  return `${drawerHead("Order sent")}
     <div class="drawer-body done">
       <svg class="done-check" viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="24"/><path d="M15 27l7 7 15-15"/></svg>
       <h3>Thank you, ${RDG.esc(order.name)}!</h3>
-      <p>Your order number is</p>
+      <p>Your order reference is</p>
       <p class="order-no">${RDG.esc(order.order_number)}</p>
-      <p class="muted">We'll call you on <b>${RDG.esc(order.phone)}</b> to confirm delivery${order.monthly_rent_total ? ", rental plan" : ""} and installation.</p>
+      <p class="muted">Please press <b>Send</b> in WhatsApp if you haven't already. We'll call you on <b>${RDG.esc(order.phone)}</b> to confirm delivery${order.rent ? ", rental plan" : ""} and installation.</p>
       <div class="checkout-total">
-        ${order.purchase_total ? `<p><span>Pay on delivery</span><strong>${money(order.purchase_total)}</strong></p>` : ""}
-        ${order.monthly_rent_total ? `<p><span>Monthly rent</span><strong>${money(order.monthly_rent_total)}/mo</strong></p>` : ""}
+        ${order.buy ? `<p><span>Pay on delivery</span><strong>${money(order.buy)}</strong></p>` : ""}
+        ${order.rent ? `<p><span>Monthly rent</span><strong>${money(order.rent)}/mo</strong></p>` : ""}
       </div>
-      ${wa ? `<a class="btn btn-green btn-block" href="${wa}" target="_blank" rel="noopener">${icon("chat")} Send on WhatsApp</a>` : ""}
-      <button class="btn btn-outline btn-block" data-action="my-orders" type="button">${icon("package_2")} View my orders</button>
+      <a class="btn btn-green btn-block" href="${order.link}" target="_blank" rel="noopener">${icon("chat")} Open WhatsApp again</a>
       <button class="btn btn-primary btn-block" data-drawer-close type="button">Continue shopping</button>
     </div>`;
 }
 
 function bindCheckout() {
   const form = document.querySelector("#checkout-form");
-  if (!form) return; // signed out: the sign-in panel is shown instead
-  form.addEventListener("input", () => {
-    const data = Object.fromEntries(new FormData(form));
-    saved.write("customer", data);
-  });
-  form.addEventListener("submit", async (event) => {
+  if (!form) return;
+  form.addEventListener("input", () => saved.write("customer", Object.fromEntries(new FormData(form))));
+  form.addEventListener("submit", (event) => {
     event.preventDefault();
     const error = document.querySelector("#checkout-error");
     const data = Object.fromEntries(new FormData(form));
@@ -720,71 +598,36 @@ function bindCheckout() {
       error.textContent = invalid.name === "phone" ? "Please enter a valid 10-digit mobile number." : invalid.name === "pincode" ? "Please enter a valid 6-digit PIN code." : `Please fill in your ${invalid.closest("label").firstChild.textContent.trim().toLowerCase()}.`;
       return;
     }
-    if (!RDG.configured) {
-      error.textContent = "Online ordering isn't connected yet. Please call or WhatsApp us to order.";
+    if (!store.whatsapp) {
+      error.textContent = store.phone ? `Online ordering isn't set up yet. Please call us on ${store.phone} to order.` : "Online ordering isn't set up yet. Please contact us to order.";
       return;
     }
-    const button = form.querySelector("button[type=submit]");
-    button.disabled = true;
-    button.innerHTML = `<span class="spinner"></span> Placing order…`;
     error.textContent = "";
-    const items = state.cart.map((i) => ({ product_id: i.id, mode: i.mode, tenure: i.mode === "rent" ? i.tenure : null, quantity: i.quantity }));
-    const { data: order, error: rpcError } = await RDG.client.rpc("place_order", { p_customer: data, p_items: items });
-    if (rpcError) {
-      button.disabled = false;
-      button.innerHTML = `${icon("lock")} Place Order`;
-      if (/sign in/i.test(rpcError.message || "")) { state.user = null; renderAccount(); return renderDrawer("checkout"); }
-      error.textContent = /function|schema cache/i.test(rpcError.message || "")
-        ? "Online ordering is being set up. Please call or WhatsApp us to place your order."
-        : rpcError.message || "We couldn't place your order. Please try again.";
-      return;
-    }
+    const orderNumber = `RDG-${Date.now().toString(36).slice(-6).toUpperCase()}`;
+    const { buy, rent } = totals();
+    const link = whatsappLink(orderMessage(data, orderNumber));
+    window.open(link, "_blank", "noopener");
     state.cart = [];
     persistCart();
     updateBadges();
-    saved.write("lastOrder", { order_number: order.order_number, phone: data.phone });
-    saved.write("customer", {});
-    loadProfile();
-    renderDrawer("done", { ...order, name: data.name.split(" ")[0], phone: data.phone });
+    renderDrawer("done", { order_number: orderNumber, name: data.name.split(" ")[0], phone: data.phone, buy, rent, link });
   });
 }
 
 // ---------------------------------------------------------------------------
-// Order tracking
+// Order status: handled by the store team over WhatsApp or phone
 // ---------------------------------------------------------------------------
-function showTrack(prefill = saved.read("lastOrder", {})) {
-  openDialog(`<form class="info-dialog" id="track-form">
+function showTrack() {
+  const lines = contactLines();
+  openDialog(`<div class="info-dialog">
     <p class="eyebrow">Track your order</p>
     <h2>Where's my order?</h2>
-    <p>Enter the order number from your confirmation and the mobile number you ordered with.</p>
-    <label class="field">Order number<input name="order" required placeholder="e.g. RDG-1A2B3C" value="${RDG.esc(prefill.order_number || "")}" autocapitalize="characters"></label>
-    <label class="field">Mobile number<input name="phone" type="tel" inputmode="numeric" required maxlength="10" placeholder="10-digit mobile number" value="${RDG.esc(prefill.phone || "")}"></label>
-    <p class="form-error" id="track-error" role="alert"></p>
-    <button class="btn btn-primary btn-block" type="submit">${icon("search")} Track order</button>
-    <div id="track-result"></div>
-  </form>`);
-  document.querySelector("#track-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const form = new FormData(event.target);
-    const err = document.querySelector("#track-error");
-    const result = document.querySelector("#track-result");
-    err.textContent = "";
-    if (!RDG.configured) { err.textContent = "Order tracking isn't connected yet."; return; }
-    const button = event.target.querySelector("button[type=submit]");
-    button.disabled = true;
-    const { data, error } = await RDG.client.rpc("track_order", { p_order_number: form.get("order"), p_phone: form.get("phone") });
-    button.disabled = false;
-    if (error) { err.textContent = /function|schema cache/i.test(error.message) ? "Order tracking is being set up. Please contact us for an update." : error.message; return; }
-    if (!data) { result.innerHTML = ""; err.textContent = "We couldn't find an order with those details. Check the order number and mobile number."; return; }
-    const current = orderSteps.findIndex((s) => s.key === data.status);
-    result.innerHTML = `<div class="track-card">
-      <div class="track-head"><b>${RDG.esc(data.order_number)}</b><small>Placed ${new Date(data.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</small></div>
-      ${data.status === "cancelled" ? `<p class="track-cancelled">${icon("cancel")} This order was cancelled. Contact us if you have questions.</p>` : `<ol class="timeline">${orderSteps.map((s, i) => `<li class="${i <= current ? "done" : ""} ${i === current ? "current" : ""}">${icon(s.icon)}<span>${s.label}</span></li>`).join("")}</ol>`}
-      <ul class="track-items">${data.items.map((it) => `<li><span>${RDG.esc(it.name)} × ${it.quantity}</span><b>${it.mode === "rent" ? `${money(it.unit_price * it.quantity)}/mo · ${it.tenure} mo` : money(it.unit_price * it.quantity)}</b></li>`).join("")}</ul>
-    </div>`;
-  });
+    <p>Message or call us with your order reference (it starts with RDG-) and we'll update you on delivery.</p>
+    ${store.whatsapp ? `<a class="btn btn-green btn-block" href="${whatsappLink("Hello Ranak Device Guru, I'd like an update on my order: ")}" target="_blank" rel="noopener">${icon("chat")} Ask on WhatsApp</a>` : ""}
+    ${lines ? `<ul class="pdp-perks">${lines}</ul>` : ""}
+    <button class="btn btn-outline btn-block" data-close type="button">Close</button>
+  </div>`);
 }
-
 // ---------------------------------------------------------------------------
 // Product page (?p=<slug>)
 // ---------------------------------------------------------------------------
@@ -1057,7 +900,7 @@ function showInfoPage(page) {
     <p>Ranak Device Guru ("we") respects your privacy. This policy explains what we collect when you use this website and how we use it.</p>
     <h3>What we collect</h3><p>When you place an order we collect your name, mobile number, delivery address, PIN code and any notes you add. We don't collect card or bank details — payment is made on delivery.</p>
     <h3>How we use it</h3><p>Only to process and deliver your order, arrange installation or rentals, contact you about your order, and provide support. We do not sell or rent your information to anyone.</p>
-    <h3>Storage</h3><p>Order details are stored securely with our hosting provider (Supabase) and are only accessible to the store owner. Your cart and wishlist are saved in your own browser.</p>
+    <h3>Storage</h3><p>Your order is sent to us as a WhatsApp message and is only seen by the store team. Your cart, wishlist and the details you type at checkout are saved only in your own browser.</p>
     <h3>Your choices</h3><p>You can ask us to view, correct or delete your order information at any time using the contact details below.</p>`;
   const terms = `
     <p>By ordering from Ranak Device Guru you agree to these terms.</p>
@@ -1152,7 +995,6 @@ async function init() {
   updatePinLabel();
   updateBadges();
   observeReveals();
-  const authReady = initAuth().catch((error) => console.error("Sign-in unavailable", error));
   try {
     ({ categories, products } = await RDG.loadCatalog());
   } catch (error) {
@@ -1178,7 +1020,6 @@ async function init() {
   observeReveals();
   syncRoute(false);
   hidePreloader();
-  await authReady;
 }
 
 // ---------------------------------------------------------------------------
@@ -1191,12 +1032,6 @@ document.addEventListener("click", (event) => {
   if (!target) return;
   const d = target.dataset;
 
-  if (d.googleLogin !== undefined) { target.disabled = true; signInWithGoogle(d.googleLogin).finally(() => { target.disabled = false; }); return; }
-  if (d.signout !== undefined) {
-    dialog.close();
-    RDG.client.auth.signOut().then(() => { state.user = null; state.profile = null; renderAccount(); showToast("You've signed out"); });
-    return;
-  }
   if (d.gotoCatalog !== undefined) { dialog.close(); return setFilter("All"); }
   if (d.close !== undefined) return dialog.close();
   if (d.drawerView) return renderDrawer(d.drawerView);
@@ -1278,14 +1113,9 @@ document.addEventListener("click", (event) => {
   switch (d.action) {
     case "install": return installApp();
     case "cart": return openDrawer("cart");
-    case "account": return state.user ? showAccountMenu() : showLogin();
-    case "my-orders":
-      if (drawer.classList.contains("open")) closeDrawer();
-      if (!state.user) { saved.write("resume", "orders"); return showLogin(); }
-      return showMyOrders();
     case "track":
       if (drawer.classList.contains("open")) closeDrawer();
-      return showTrack(d.order ? { order_number: d.order, phone: d.phone } : undefined);
+      return showTrack();
     case "support": event.preventDefault(); return openDialog(`<div class="info-dialog"><p class="eyebrow">Service &amp; Support</p><h2>We're here to help</h2><ul class="pdp-perks"><li>${icon("build")}Installation &amp; demo for TVs, ACs, washing machines and refrigerators</li><li>${icon("event_repeat")}Free maintenance on 12-month rental plans</li><li>${icon("package_2")}<button class="link-button" data-action="track" type="button">Track an existing order</button></li>${contactLines()}</ul><button class="btn btn-primary" data-close type="button">Close</button></div>`);
     case "emi": return openDialog(`<div class="info-dialog"><p class="eyebrow">Easy EMI Options</p><h2>Pay in easy monthly instalments</h2><ul class="pdp-perks"><li>${icon("credit_card")}Credit &amp; debit card EMI on major banks</li><li>${icon("percent")}No-cost EMI on selected products</li><li>${icon("schedule")}Tenures from 3 to 24 months</li></ul><p class="fine">EMI eligibility and interest are confirmed by our team before delivery.</p><button class="btn btn-primary" data-close type="button">Got it</button></div>`);
     case "wishlist": {
